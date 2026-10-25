@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"rojgarbridge-backend/internal/db"
@@ -41,37 +42,104 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetDrafts - lists all jobs awaiting review
-func (h *Handler) GetDrafts(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+// parseLimit helper parses limit query parameter
+func parseLimit(limitStr string, defaultLimit int) int {
+	if strings.EqualFold(limitStr, "all") || limitStr == "-1" {
+		return 0 // 0 means return all
+	}
+	if limitStr == "" {
+		return defaultLimit
+	}
+	val, err := strconv.Atoi(limitStr)
+	if err != nil || val <= 0 {
+		return defaultLimit
+	}
+	return val
+}
+
+// GetAllJobs - lists all jobs (draft + published) with optional filters
+func (h *Handler) GetAllJobs(w http.ResponseWriter, r *http.Request) {
+	limit := parseLimit(r.URL.Query().Get("limit"), 100)
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	noticeType := r.URL.Query().Get("type")
+	category := r.URL.Query().Get("category")
+	state := r.URL.Query().Get("state")
+	status := r.URL.Query().Get("status")
 
-	jobs, err := h.db.GetJobsByStatus(models.StatusDraft, noticeType, limit, offset)
+	jobs, total, err := h.db.GetJobs(status, noticeType, category, state, limit, offset)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"count": len(jobs),
-		"jobs":  jobs,
+		"total":  total,
+		"count":  len(jobs),
+		"limit":  limit,
+		"offset": offset,
+		"jobs":   jobs,
+	})
+}
+
+// GetDrafts - lists all jobs awaiting review
+func (h *Handler) GetDrafts(w http.ResponseWriter, r *http.Request) {
+	limit := parseLimit(r.URL.Query().Get("limit"), 100)
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	noticeType := r.URL.Query().Get("type")
+	category := r.URL.Query().Get("category")
+	state := r.URL.Query().Get("state")
+
+	jobs, total, err := h.db.GetJobs(string(models.StatusDraft), noticeType, category, state, limit, offset)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"total":  total,
+		"count":  len(jobs),
+		"limit":  limit,
+		"offset": offset,
+		"jobs":   jobs,
 	})
 }
 
 // GetPublished - lists live jobs for the public page
 func (h *Handler) GetPublished(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	limit := parseLimit(r.URL.Query().Get("limit"), 100)
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	noticeType := r.URL.Query().Get("type")
+	category := r.URL.Query().Get("category")
+	state := r.URL.Query().Get("state")
 
-	jobs, err := h.db.GetJobsByStatus(models.StatusPublished, noticeType, limit, offset)
+	jobs, total, err := h.db.GetJobs(string(models.StatusPublished), noticeType, category, state, limit, offset)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"count": len(jobs),
-		"jobs":  jobs,
+		"total":  total,
+		"count":  len(jobs),
+		"limit":  limit,
+		"offset": offset,
+		"jobs":   jobs,
+	})
+}
+
+// BulkPublish - publish all or selected drafts
+func (h *Handler) BulkPublish(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		IDs []int64 `json:"ids"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&payload)
+
+	count, err := h.db.BulkPublish(payload.IDs)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to bulk publish: "+err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message":         "Jobs published successfully",
+		"published_count": count,
 	})
 }
 

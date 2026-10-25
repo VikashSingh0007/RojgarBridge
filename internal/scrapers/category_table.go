@@ -22,17 +22,14 @@ type CategoryTableScraper struct {
 }
 
 func NewCategoryTableScraper(name, url, defaultCategory string, maxItems int) *CategoryTableScraper {
-	if maxItems <= 0 {
-		maxItems = 100
-	}
 	return &CategoryTableScraper{
 		name:            name,
 		url:             url,
 		defaultCategory: defaultCategory,
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 45 * time.Second,
 		},
-		maxItems: maxItems,
+		maxItems: maxItems, // 0 means no limit (scrape all)
 	}
 }
 
@@ -74,7 +71,7 @@ func (s *CategoryTableScraper) FetchNotices() ([]models.RawNotice, error) {
 
 	// 1. Check for standard recruitment table rows: tr.lattrbord
 	doc.Find("table.lattbl tr.lattrbord, tr.lattrbord").Each(func(i int, tr *goquery.Selection) {
-		if len(notices) >= s.maxItems {
+		if s.maxItems > 0 && len(notices) >= s.maxItems {
 			return
 		}
 
@@ -120,7 +117,7 @@ func (s *CategoryTableScraper) FetchNotices() ([]models.RawNotice, error) {
 			board, postName, qualification, advtNo, lastDate, s.defaultCategory, href,
 		)
 
-		uniqueKey := fmt.Sprintf("%s|%s", board, postName)
+		uniqueKey := fmt.Sprintf("%s|%s|%s", board, postName, href)
 		if seenHashes[uniqueKey] {
 			return
 		}
@@ -140,7 +137,7 @@ func (s *CategoryTableScraper) FetchNotices() ([]models.RawNotice, error) {
 	// 2. If no lattrbord found (e.g. Admit Card or Exam Result 4-column tables: Date, Board, Name, Link)
 	if len(notices) == 0 {
 		doc.Find("table tr").Each(func(i int, tr *goquery.Selection) {
-			if len(notices) >= s.maxItems {
+			if s.maxItems > 0 && len(notices) >= s.maxItems {
 				return
 			}
 

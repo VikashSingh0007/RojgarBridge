@@ -33,18 +33,18 @@ func NewManager(database *db.DB, ext extractor.Extractor) *Manager {
 	m.RegisterScraper(NewSSCScraper())
 	m.RegisterScraper(NewUPSCScraper())
 
-	// 2. High-Volume Specialized Category Table Scrapers
-	m.RegisterScraper(NewCategoryTableScraper("Banking Jobs", "https://www.freejobalert.com/bank-jobs/", "Banking", 60))
-	m.RegisterScraper(NewCategoryTableScraper("Railway Jobs", "https://www.freejobalert.com/railway-jobs/", "Railway", 60))
-	m.RegisterScraper(NewCategoryTableScraper("Police & Defence Jobs", "https://www.freejobalert.com/police-defence-jobs/", "Defence & Police", 60))
-	m.RegisterScraper(NewCategoryTableScraper("Teaching Jobs", "https://www.freejobalert.com/teaching-faculty-jobs/", "Teaching", 60))
-	m.RegisterScraper(NewCategoryTableScraper("Engineering Jobs", "https://www.freejobalert.com/engineering-jobs/", "Engineering & PSU", 60))
-	m.RegisterScraper(NewCategoryTableScraper("State Govt Jobs", "https://www.freejobalert.com/state-government-jobs/", "State Govt", 100))
-	m.RegisterScraper(NewCategoryTableScraper("Central Govt Jobs", "https://www.freejobalert.com/government-jobs/", "Central Govt", 60))
+	// 2. High-Volume Specialized Category Table Scrapers (0 = unlimited, scrapes all jobs on page)
+	m.RegisterScraper(NewCategoryTableScraper("Banking Jobs", "https://www.freejobalert.com/bank-jobs/", "Banking", 0))
+	m.RegisterScraper(NewCategoryTableScraper("Railway Jobs", "https://www.freejobalert.com/railway-jobs/", "Railway", 0))
+	m.RegisterScraper(NewCategoryTableScraper("Police & Defence Jobs", "https://www.freejobalert.com/police-defence-jobs/", "Defence & Police", 0))
+	m.RegisterScraper(NewCategoryTableScraper("Teaching Jobs", "https://www.freejobalert.com/teaching-faculty-jobs/", "Teaching", 0))
+	m.RegisterScraper(NewCategoryTableScraper("Engineering Jobs", "https://www.freejobalert.com/engineering-jobs/", "Engineering & PSU", 0))
+	m.RegisterScraper(NewCategoryTableScraper("State Govt Jobs", "https://www.freejobalert.com/state-government-jobs/", "State Govt", 0))
+	m.RegisterScraper(NewCategoryTableScraper("Central Govt Jobs", "https://www.freejobalert.com/government-jobs/", "Central Govt", 0))
 
 	// 3. Exam Updates (Admit Cards & Results)
-	m.RegisterScraper(NewCategoryTableScraper("Admit Cards", "https://www.freejobalert.com/admit-card/", "Admit Card", 40))
-	m.RegisterScraper(NewCategoryTableScraper("Exam Results", "https://www.freejobalert.com/exam-results/", "Result", 40))
+	m.RegisterScraper(NewCategoryTableScraper("Admit Cards", "https://www.freejobalert.com/admit-card/", "Admit Card", 0))
+	m.RegisterScraper(NewCategoryTableScraper("Exam Results", "https://www.freejobalert.com/exam-results/", "Result", 0))
 
 	// 4. Real-time RSS Feed Scraper
 	m.RegisterScraper(NewRSSScraper("Live Job Alerts Feed", "https://www.freejobalert.com/feed"))

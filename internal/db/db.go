@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -108,36 +109,51 @@ func (d *DB) SaveDraft(job *models.Job) error {
 	return nil
 }
 
-func (d *DB) GetJobsByStatus(status models.JobStatus, noticeType string, limit, offset int) ([]models.Job, error) {
-	if limit <= 0 {
-		limit = 20
+func (d *DB) GetJobs(status, noticeType, category, state string, limit, offset int) ([]models.Job, int, error) {
+	var whereClauses []string
+	var args []interface{}
+
+	if status != "" && status != "all" {
+		whereClauses = append(whereClauses, "status = ?")
+		args = append(args, status)
+	}
+	if noticeType != "" && noticeType != "all" {
+		whereClauses = append(whereClauses, "json_extract(details, '$.notice_type') = ?")
+		args = append(args, noticeType)
+	}
+	if category != "" && category != "all" {
+		whereClauses = append(whereClauses, "json_extract(details, '$.category') = ?")
+		args = append(args, category)
+	}
+	if state != "" && state != "all" {
+		whereClauses = append(whereClauses, "json_extract(details, '$.state') = ?")
+		args = append(args, state)
 	}
 
-	var query string
-	var rows *sql.Rows
-	var err error
-
-	if noticeType != "" {
-		query = `
-		SELECT id, hash, source_portal, status, raw_notice, details, review_notes, created_at, updated_at, published_at
-		FROM jobs
-		WHERE status = ? AND json_extract(details, '$.notice_type') = ?
-		ORDER BY created_at DESC
-		LIMIT ? OFFSET ?
-		`
-		rows, err = d.conn.Query(query, status, noticeType, limit, offset)
-	} else {
-		query = `
-		SELECT id, hash, source_portal, status, raw_notice, details, review_notes, created_at, updated_at, published_at
-		FROM jobs
-		WHERE status = ?
-		ORDER BY created_at DESC
-		LIMIT ? OFFSET ?
-		`
-		rows, err = d.conn.Query(query, status, limit, offset)
+	whereSQL := ""
+	if len(whereClauses) > 0 {
+		whereSQL = " WHERE " + strings.Join(whereClauses, " AND ")
 	}
+
+	// 1. Get total count
+	countQuery := "SELECT COUNT(1) FROM jobs" + whereSQL
+	var totalCount int
+	if err := d.conn.QueryRow(countQuery, args...).Scan(&totalCount); err != nil {
+		return nil, 0, err
+	}
+
+	// 2. Build select query
+	selectQuery := "SELECT id, hash, source_portal, status, raw_notice, details, review_notes, created_at, updated_at, published_at FROM jobs" + whereSQL + " ORDER BY created_at DESC"
+
+	queryArgs := append([]interface{}{}, args...)
+	if limit > 0 {
+		selectQuery += " LIMIT ? OFFSET ?"
+		queryArgs = append(queryArgs, limit, offset)
+	}
+
+	rows, err := d.conn.Query(selectQuery, queryArgs...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -149,24 +165,59 @@ func (d *DB) GetJobsByStatus(status models.JobStatus, noticeType string, limit, 
 
 		err := rows.Scan(&j.ID, &j.Hash, &j.SourcePortal, &j.Status, &rawStr, &detStr, &j.ReviewNotes, &j.CreatedAt, &j.UpdatedAt, &pubAt)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 
 		if pubAt.Valid {
 			j.PublishedAt = &pubAt.Time
 		}
 
-		if err := json.Unmarshal([]byte(rawStr), &j.RawNotice); err != nil {
-			// fallback on empty
-		}
-		if err := json.Unmarshal([]byte(detStr), &j.Details); err != nil {
-			// fallback on empty
-		}
+		_ = json.Unmarshal([]byte(rawStr), &j.RawNotice)
+		_ = json.Unmarshal([]byte(detStr), &j.Details)
 
 		jobs = append(jobs, j)
 	}
 
-	return jobs, nil
+	return jobs, totalCount, nil
+}
+
+func (d *DB) GetJobsByStatus(status models.JobStatus, noticeType string, limit, offset int) ([]models.Job, error) {
+	jobs, _, err := d.GetJobs(string(status), noticeType, "", "", limit, offset)
+	return jobs, err
+}
+
+func (d *DB) BulkPublish(ids []int64) (int64, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	now := time.Now()
+	if len(ids) == 0 {
+		// Publish all drafts
+		query := `UPDATE jobs SET status = ?, published_at = ?, updated_at = ? WHERE status = ?`
+		res, err := d.conn.Exec(query, models.StatusPublished, now, now, models.StatusDraft)
+		if err != nil {
+			return 0, err
+		}
+		return res.RowsAffected()
+	}
+
+	// Publish specific IDs
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids)+3)
+	args[0] = models.StatusPublished
+	args[1] = now
+	args[2] = now
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i+3] = id
+	}
+
+	query := fmt.Sprintf(`UPDATE jobs SET status = ?, published_at = ?, updated_at = ? WHERE id IN (%s)`, strings.Join(placeholders, ","))
+	res, err := d.conn.Exec(query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 func (d *DB) GetJobByID(id int64) (*models.Job, error) {

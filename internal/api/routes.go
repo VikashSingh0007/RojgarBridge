@@ -31,11 +31,13 @@ func NewRouter(h *Handler) *chi.Mux {
 
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/jobs", func(r chi.Router) {
+			r.Get("/", h.GetAllJobs)
 			r.Get("/drafts", h.GetDrafts)
 			r.Get("/published", h.GetPublished)
 			r.Get("/{id}", h.GetJobByID)
 			r.Put("/{id}", h.UpdateJob)
 			r.Post("/{id}/publish", h.PublishJob)
+			r.Post("/bulk-publish", h.BulkPublish)
 			r.Post("/{id}/reject", h.RejectJob)
 		})
 
