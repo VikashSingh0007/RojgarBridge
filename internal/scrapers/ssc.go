@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"rozgarhub-backend/internal/models"
+	"rojgarbridge-backend/internal/models"
 )
 
 type SSCScraper struct {

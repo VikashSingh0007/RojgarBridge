@@ -3,7 +3,7 @@ package scrapers
 import (
 	"crypto/sha256"
 	"fmt"
-	"rozgarhub-backend/internal/models"
+	"rojgarbridge-backend/internal/models"
 )
 
 // PortalScraper interface implemented by each government portal scraper

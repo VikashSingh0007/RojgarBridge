@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"rozgarhub-backend/internal/models"
+	"rojgarbridge-backend/internal/models"
 )
 
 type UPSCScraper struct {

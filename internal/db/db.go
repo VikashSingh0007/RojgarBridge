@@ -7,7 +7,7 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
-	"rozgarhub-backend/internal/models"
+	"rojgarbridge-backend/internal/models"
 )
 
 type DB struct {

@@ -10,17 +10,17 @@ import (
 	"syscall"
 	"time"
 
-	"rozgarhub-backend/internal/api"
-	"rozgarhub-backend/internal/config"
-	"rozgarhub-backend/internal/db"
-	"rozgarhub-backend/internal/extractor"
-	"rozgarhub-backend/internal/scrapers"
+	"rojgarbridge-backend/internal/api"
+	"rojgarbridge-backend/internal/config"
+	"rojgarbridge-backend/internal/db"
+	"rojgarbridge-backend/internal/extractor"
+	"rojgarbridge-backend/internal/scrapers"
 )
 
 func main() {
 	cfg := config.Load()
 	log.Println("==================================================")
-	log.Println("       RozgarHub Backend Engine Starting          ")
+	log.Println("      RojgarBridge Backend Engine Starting        ")
 	log.Println("==================================================")
 
 	// 1. Initialize SQLite Database
@@ -71,7 +71,7 @@ func main() {
 
 	// Server runner
 	go func() {
-		log.Printf("[HTTP] RozgarHub server listening on http://localhost:%s", cfg.Port)
+		log.Printf("[HTTP] RojgarBridge server listening on http://localhost:%s", cfg.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("HTTP server error: %v", err)
 		}
@@ -89,6 +89,6 @@ func main() {
 	if err := server.Shutdown(ctx); err != nil {
 		log.Printf("Server forced shutdown: %v", err)
 	}
-	log.Println("[Server] RozgarHub backend exited clean.")
+	log.Println("[Server] RojgarBridge backend exited clean.")
 	fmt.Println("Bye!")
 }

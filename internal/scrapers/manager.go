@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"rozgarhub-backend/internal/db"
-	"rozgarhub-backend/internal/extractor"
-	"rozgarhub-backend/internal/models"
+	"rojgarbridge-backend/internal/db"
+	"rojgarbridge-backend/internal/extractor"
+	"rojgarbridge-backend/internal/models"
 )
 
 type PipelineResult struct {

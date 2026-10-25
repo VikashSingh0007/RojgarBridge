@@ -1,6 +1,6 @@
-# RozgarHub Backend Engine (Golang)
+# RojgarBridge Backend Engine (Golang)
 
-RozgarHub is a high-performance backend built in **Golang** to automatically scrape, parse, and review latest Indian government job notifications (Sarkari Naukri).
+RojgarBridge is a high-performance backend built in **Golang** to automatically scrape, parse, and review latest Indian government job notifications (Sarkari Naukri).
 
 ---
 
@@ -8,7 +8,7 @@ RozgarHub is a high-performance backend built in **Golang** to automatically scr
 
 1. **Scrapers (`internal/scrapers/`)**:
    - Ultra-fast concurrent scrapers (`net/http` + `goquery`).
-   - Monitors official portals (e.g., UPSC, Employment News, RSS Feeds).
+   - Monitors official portals (e.g., SSC, UPSC, Employment News, RSS Feeds).
    - Generates SHA-256 deduplication hash (`portal_id + title + url`) so duplicate notices are never processed twice.
 2. **AI Extractor (`internal/extractor/`)**:
    - Uses **Google Gemini 1.5 Flash** with strict JSON schemas to extract structured data: Title, Vacancies, Age Limit, Qualification, Fees, Dates, and Official PDF links.
@@ -43,13 +43,13 @@ RozgarHub is a high-performance backend built in **Golang** to automatically scr
 
 ### 1. Build
 ```bash
-go build -o server ./cmd/server
+go build -o server .
 ```
 
 ### 2. Configure Environment (Optional)
 ```bash
 export PORT=8080
-export DB_PATH=rozgarhub.db
+export DB_PATH=rojgarbridge.db
 export GEMINI_API_KEY="your-gemini-api-key"
 ```
 

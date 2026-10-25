@@ -1,4 +1,4 @@
-module rozgarhub-backend
+module rojgarbridge-backend
 
 go 1.27.3
 

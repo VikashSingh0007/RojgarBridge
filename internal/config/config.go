@@ -19,7 +19,7 @@ func Load() *Config {
 
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
-		dbPath = "rozgarhub.db"
+		dbPath = "rojgarbridge.db"
 	}
 
 	apiKey := os.Getenv("GEMINI_API_KEY")

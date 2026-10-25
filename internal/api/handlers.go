@@ -6,9 +6,9 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"rozgarhub-backend/internal/db"
-	"rozgarhub-backend/internal/models"
-	"rozgarhub-backend/internal/scrapers"
+	"rojgarbridge-backend/internal/db"
+	"rojgarbridge-backend/internal/models"
+	"rojgarbridge-backend/internal/scrapers"
 )
 
 type Handler struct {
@@ -37,7 +37,7 @@ func respondError(w http.ResponseWriter, status int, message string) {
 func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{
 		"status":  "healthy",
-		"service": "RozgarHub Core Backend",
+		"service": "RojgarBridge Core Backend",
 	})
 }
 
