@@ -36,6 +36,8 @@ func NewManager(database *db.DB, ext extractor.Extractor) *Manager {
 	m.RegisterScraper(NewBPSCScraper())  // Bihar Public Service Commission (bpsc.bihar.gov.in)
 	m.RegisterScraper(NewDSSSBScraper()) // Delhi Subordinate Services Selection Board (dsssb.delhi.gov.in)
 	m.RegisterScraper(NewNTAScraper())   // National Testing Agency (nta.ac.in)
+	m.RegisterScraper(NewUPPSCScraper()) // Uttar Pradesh Public Service Commission (uppsc.up.nic.in)
+	m.RegisterScraper(NewISROScraper())  // Indian Space Research Organisation (isro.gov.in)
 
 	return m
 }

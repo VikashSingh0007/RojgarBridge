@@ -14,6 +14,7 @@ import (
 	"rojgarbridge-backend/internal/config"
 	"rojgarbridge-backend/internal/db"
 	"rojgarbridge-backend/internal/extractor"
+	"rojgarbridge-backend/internal/notifier"
 	"rojgarbridge-backend/internal/scrapers"
 )
 
@@ -57,8 +58,14 @@ func main() {
 		}
 	}()
 
-	// 5. Initialize API Router
-	handler := api.NewHandler(database, manager)
+	// 5. Initialize Telegram Alert Notifier
+	tgNotifier := notifier.NewTelegramNotifier(cfg.TelegramBotToken, cfg.TelegramChatID)
+	if tgNotifier.IsEnabled() {
+		log.Println("[Notifier] Telegram Channel Alert Broadcast enabled.")
+	}
+
+	// 6. Initialize API Router
+	handler := api.NewHandler(database, manager, tgNotifier)
 	router := api.NewRouter(handler)
 
 	server := &http.Server{

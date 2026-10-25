@@ -5,10 +5,12 @@ import (
 )
 
 type Config struct {
-	Port         string
-	DBPath       string
-	GeminiAPIKey string
-	Environment  string
+	Port             string
+	DBPath           string
+	GeminiAPIKey     string
+	Environment      string
+	TelegramBotToken string
+	TelegramChatID   string
 }
 
 func Load() *Config {
@@ -29,10 +31,15 @@ func Load() *Config {
 		env = "development"
 	}
 
+	tgToken := os.Getenv("TELEGRAM_BOT_TOKEN")
+	tgChatID := os.Getenv("TELEGRAM_CHAT_ID")
+
 	return &Config{
-		Port:         port,
-		DBPath:       dbPath,
-		GeminiAPIKey: apiKey,
-		Environment:  env,
+		Port:             port,
+		DBPath:           dbPath,
+		GeminiAPIKey:     apiKey,
+		Environment:      env,
+		TelegramBotToken: tgToken,
+		TelegramChatID:   tgChatID,
 	}
 }

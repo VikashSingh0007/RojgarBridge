@@ -15,7 +15,7 @@ func NewRouter(h *Handler) *chi.Mux {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	// Cross-Origin Resource Sharing (CORS) for future frontend
+	// Cross-Origin Resource Sharing (CORS) for frontend
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -29,9 +29,17 @@ func NewRouter(h *Handler) *chi.Mux {
 	r.Head("/", h.Health)
 	r.Get("/health", h.Health)
 
+	// Public SEO Feeds
+	r.Get("/feed.xml", h.GetRSSFeed)
+	r.Get("/rss.xml", h.GetRSSFeed)
+	r.Get("/sitemap.xml", h.GetSitemap)
+
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/jobs", func(r chi.Router) {
 			r.Get("/", h.GetAllJobs)
+			r.Get("/search", h.SearchJobs)
+			r.Get("/closing-soon", h.GetClosingSoon)
+			r.Get("/analytics", h.GetAnalytics)
 			r.Get("/drafts", h.GetDrafts)
 			r.Get("/published", h.GetPublished)
 			r.Get("/{id}", h.GetJobByID)
