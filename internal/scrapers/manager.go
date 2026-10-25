@@ -30,8 +30,8 @@ func NewManager(database *db.DB, ext extractor.Extractor) *Manager {
 	}
 
 	// Register default scrapers
+	m.RegisterScraper(NewRSSScraper("Central Govt Jobs", "https://www.freejobalert.com/feed"))
 	m.RegisterScraper(NewUPSCScraper())
-	m.RegisterScraper(NewRSSScraper("PIB Jobs", "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1"))
 
 	return m
 }

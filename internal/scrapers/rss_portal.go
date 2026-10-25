@@ -91,7 +91,9 @@ func (s *RSSScraper) FetchNotices() ([]models.RawNotice, error) {
 			strings.Contains(lowerTitle, "apply") ||
 			strings.Contains(lowerTitle, "officer") ||
 			strings.Contains(lowerTitle, "assistant") ||
-			strings.Contains(lowerTitle, "inspector") {
+			strings.Contains(lowerTitle, "inspector") ||
+			strings.Contains(lowerTitle, "posts") ||
+			strings.Contains(lowerTitle, "walkin") {
 
 			notices = append(notices, models.RawNotice{
 				SourcePortal: s.name,
