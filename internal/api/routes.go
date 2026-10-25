@@ -25,6 +25,8 @@ func NewRouter(h *Handler) *chi.Mux {
 		MaxAge:           300,
 	}))
 
+	r.Get("/", h.Health)
+	r.Head("/", h.Health)
 	r.Get("/health", h.Health)
 
 	r.Route("/api", func(r chi.Router) {

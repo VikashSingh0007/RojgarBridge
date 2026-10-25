@@ -54,7 +54,9 @@ func (s *RSSScraper) FetchNotices() ([]models.RawNotice, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "RozgarHub-Bot/1.0 (+https://rozgarhub.in)")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "application/rss+xml, application/xml, text/xml, */*")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
