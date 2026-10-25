@@ -541,7 +541,8 @@ func extractOfficialGovURL(text string, fallbackURL string) string {
 	if strings.Contains(lowerFallback, ".gov.in") ||
 		strings.Contains(lowerFallback, ".nic.in") ||
 		strings.Contains(lowerFallback, ".ac.in") ||
-		strings.Contains(lowerFallback, ".edu.in") {
+		strings.Contains(lowerFallback, ".edu.in") ||
+		strings.Contains(lowerFallback, "ibps.in") {
 		return fallbackURL
 	}
 
@@ -564,23 +565,6 @@ func extractOfficialGovURL(text string, fallbackURL string) string {
 
 // extractRealOrg extracts authentic organization name
 func extractRealOrg(title, content, defaultPortal string) string {
-	// Check "Board: PNB Bank Rohtak" in structured content
-	if match := regexp.MustCompile(`(?i)board\s*[:–-]\s*([^|]+)`).FindStringSubmatch(content); len(match) > 1 {
-		b := strings.TrimSpace(match[1])
-		if b != "" && b != "–" && b != "-" {
-			return b
-		}
-	}
-
-	// Check [PNB Bank Rohtak] in title
-	if strings.HasPrefix(title, "[") && strings.Contains(title, "]") {
-		bracket := title[1:strings.Index(title, "]")]
-		bracket = strings.TrimSpace(bracket)
-		if bracket != "" {
-			return bracket
-		}
-	}
-
 	// Common official names
 	if defaultPortal == "UPSC" {
 		return "Union Public Service Commission (UPSC)"
@@ -590,6 +574,15 @@ func extractRealOrg(title, content, defaultPortal string) string {
 	}
 	if defaultPortal == "IBPS" {
 		return "Institute of Banking Personnel Selection (IBPS)"
+	}
+	if defaultPortal == "BPSC" {
+		return "Bihar Public Service Commission (BPSC)"
+	}
+	if defaultPortal == "DSSSB" {
+		return "Delhi Subordinate Services Selection Board (DSSSB)"
+	}
+	if defaultPortal == "NTA" {
+		return "National Testing Agency (NTA)"
 	}
 	if defaultPortal == "RRB" {
 		return "Railway Recruitment Board (RRB)"

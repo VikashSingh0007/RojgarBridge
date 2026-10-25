@@ -58,65 +58,77 @@ type sscResponse struct {
 }
 
 func (s *SSCScraper) FetchNotices() ([]models.RawNotice, error) {
-	apiURL := "https://ssc.gov.in/api/general-website/portal/notice-boards?page=1&limit=50&order=DESC&isAttachment=true&attributes=id,headline,startDate,endDate,language"
-
-	req, err := http.NewRequest("GET", apiURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-	req.Header.Set("Accept", "application/json, text/plain, */*")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("ssc api request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ssc api returned status: %d", resp.StatusCode)
-	}
-
-	var sscResp sscResponse
-	if err := json.NewDecoder(resp.Body).Decode(&sscResp); err != nil {
-		return nil, fmt.Errorf("failed to decode ssc response: %w", err)
-	}
-
 	var notices []models.RawNotice
+	seen := make(map[string]bool)
 
-	for _, item := range sscResp.Data {
-		// Prefer English notices for clean parsing
-		if item.Language != "english" && item.Language != "" {
+	// Fetch up to 3 pages (up to 150 official notices from Staff Selection Commission)
+	for page := 1; page <= 3; page++ {
+		apiURL := fmt.Sprintf("https://ssc.gov.in/api/general-website/portal/notice-boards?page=%d&limit=50&order=DESC&isAttachment=true&attributes=id,headline,language", page)
+
+		req, err := http.NewRequest("GET", apiURL, nil)
+		if err != nil {
 			continue
 		}
 
-		headline := strings.TrimSpace(item.Headline)
-		if headline == "" {
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+		req.Header.Set("Accept", "application/json, text/plain, */*")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+
+		resp, err := s.client.Do(req)
+		if err != nil {
 			continue
 		}
 
-		// Construct direct official PDF URL
-		pdfURL := "https://ssc.gov.in"
-		if len(item.Attachments) > 0 && item.Attachments[0].Path != "" {
-			cleanPath := strings.ReplaceAll(item.Attachments[0].Path, "\\", "/")
-			pdfURL = fmt.Sprintf("https://ssc.gov.in/api/attachment/%s", strings.TrimPrefix(cleanPath, "/"))
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			continue
 		}
 
-		pubDate := item.StartDate
-		if pubDate == "" {
-			pubDate = item.CreatedAt
+		var sscResp sscResponse
+		if err := json.NewDecoder(resp.Body).Decode(&sscResp); err != nil {
+			resp.Body.Close()
+			continue
 		}
+		resp.Body.Close()
 
-		notices = append(notices, models.RawNotice{
-			SourcePortal: "SSC",
-			NoticeTitle:  headline,
-			NoticeURL:    pdfURL,
-			PublishedAt:  pubDate,
-			FetchedAt:    time.Now(),
-			ContentText:  fmt.Sprintf("Title: %s | Source: Staff Selection Commission (Official) | Start Date: %s | Last Date: %s | Official PDF: %s", headline, item.StartDate, item.EndDate, pdfURL),
-		})
+		for _, item := range sscResp.Data {
+			// Prefer English notices
+			if item.Language != "english" && item.Language != "" {
+				continue
+			}
+
+			headline := strings.TrimSpace(item.Headline)
+			if headline == "" {
+				continue
+			}
+
+			// Direct official SSC attachment PDF
+			pdfURL := "https://ssc.gov.in"
+			if len(item.Attachments) > 0 && item.Attachments[0].Path != "" {
+				cleanPath := strings.ReplaceAll(item.Attachments[0].Path, "\\", "/")
+				pdfURL = fmt.Sprintf("https://ssc.gov.in/api/attachment/%s", strings.TrimPrefix(cleanPath, "/"))
+			}
+
+			if seen[pdfURL] || seen[headline] {
+				continue
+			}
+			seen[pdfURL] = true
+			seen[headline] = true
+
+			pubDate := item.CreatedAt
+			if len(pubDate) > 10 {
+				pubDate = pubDate[:10]
+			}
+
+			notices = append(notices, models.RawNotice{
+				SourcePortal: "SSC",
+				NoticeTitle:  headline,
+				NoticeURL:    pdfURL,
+				PublishedAt:  pubDate,
+				FetchedAt:    time.Now(),
+				ContentText:  fmt.Sprintf("Title: %s | Source: Staff Selection Commission (Official Portal: ssc.gov.in) | Official Document: %s", headline, pdfURL),
+			})
+		}
 	}
 
 	return notices, nil
