@@ -40,6 +40,7 @@ func NewRouter(h *Handler) *chi.Mux {
 		})
 
 		r.Post("/pipeline/run", h.TriggerPipeline)
+		r.Post("/pipeline/reextract", h.ReExtractDrafts)
 	})
 
 	return r

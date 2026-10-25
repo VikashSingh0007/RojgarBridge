@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -12,6 +13,7 @@ import (
 
 type DB struct {
 	conn *sql.DB
+	mu   sync.Mutex
 }
 
 func InitDB(dbPath string) (*DB, error) {
@@ -25,9 +27,13 @@ func InitDB(dbPath string) (*DB, error) {
 		PRAGMA journal_mode = WAL;
 		PRAGMA synchronous = NORMAL;
 		PRAGMA foreign_keys = ON;
+		PRAGMA busy_timeout = 10000;
 	`); err != nil {
 		return nil, fmt.Errorf("failed to set pragma: %w", err)
 	}
+
+	conn.SetMaxOpenConns(25)
+	conn.SetMaxIdleConns(10)
 
 	db := &DB{conn: conn}
 	if err := db.migrate(); err != nil {
@@ -69,6 +75,9 @@ func (d *DB) ExistsByHash(hash string) (bool, error) {
 }
 
 func (d *DB) SaveDraft(job *models.Job) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	rawJSON, err := json.Marshal(job.RawNotice)
 	if err != nil {
 		return fmt.Errorf("failed to marshal raw notice: %w", err)
@@ -186,6 +195,9 @@ func (d *DB) GetJobByID(id int64) (*models.Job, error) {
 }
 
 func (d *DB) UpdateJob(job *models.Job) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	detailsJSON, err := json.Marshal(job.Details)
 	if err != nil {
 		return err
@@ -202,6 +214,9 @@ func (d *DB) UpdateJob(job *models.Job) error {
 }
 
 func (d *DB) PublishJob(id int64) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	now := time.Now()
 	query := `
 	UPDATE jobs
@@ -213,6 +228,9 @@ func (d *DB) PublishJob(id int64) error {
 }
 
 func (d *DB) RejectJob(id int64, reason string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	now := time.Now()
 	query := `
 	UPDATE jobs
@@ -221,6 +239,43 @@ func (d *DB) RejectJob(id int64, reason string) error {
 	`
 	_, err := d.conn.Exec(query, models.StatusRejected, reason, now, id)
 	return err
+}
+
+func (d *DB) GetJobsForReExtraction() ([]models.Job, error) {
+	query := `
+	SELECT id, hash, source_portal, status, raw_notice, details, review_notes, created_at, updated_at, published_at
+	FROM jobs
+	WHERE status = 'draft'
+	ORDER BY id ASC
+	`
+	rows, err := d.conn.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []models.Job
+	for rows.Next() {
+		var j models.Job
+		var rawStr, detStr string
+		var pubAt sql.NullTime
+
+		err := rows.Scan(&j.ID, &j.Hash, &j.SourcePortal, &j.Status, &rawStr, &detStr, &j.ReviewNotes, &j.CreatedAt, &j.UpdatedAt, &pubAt)
+		if err != nil {
+			return nil, err
+		}
+
+		if pubAt.Valid {
+			j.PublishedAt = &pubAt.Time
+		}
+
+		_ = json.Unmarshal([]byte(rawStr), &j.RawNotice)
+		_ = json.Unmarshal([]byte(detStr), &j.Details)
+
+		jobs = append(jobs, j)
+	}
+
+	return jobs, nil
 }
 
 func (d *DB) Close() error {

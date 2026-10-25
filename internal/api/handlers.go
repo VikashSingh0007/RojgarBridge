@@ -184,12 +184,23 @@ func (h *Handler) RejectJob(w http.ResponseWriter, r *http.Request) {
 
 // TriggerPipeline - manual trigger to scrape and extract
 func (h *Handler) TriggerPipeline(w http.ResponseWriter, r *http.Request) {
-	// Run synchronously or async
+	// Run in background
 	go func() {
 		h.manager.RunPipeline()
 	}()
 
 	respondJSON(w, http.StatusAccepted, map[string]string{
-		"message": "Scraping and AI extraction pipeline triggered in background",
+		"message": "Scraping and AI extraction pipeline triggered in background across all 12 portal sources",
+	})
+}
+
+// ReExtractDrafts - re-runs improved extraction on existing drafts
+func (h *Handler) ReExtractDrafts(w http.ResponseWriter, r *http.Request) {
+	go func() {
+		h.manager.ReExtractDrafts()
+	}()
+
+	respondJSON(w, http.StatusAccepted, map[string]string{
+		"message": "Re-extraction started for existing draft jobs in background",
 	})
 }

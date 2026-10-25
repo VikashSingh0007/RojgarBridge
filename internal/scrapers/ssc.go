@@ -45,6 +45,8 @@ type sscNoticeItem struct {
 	ExamID      string          `json:"examId"`
 	ContentType string          `json:"contentType"`
 	Language    string          `json:"language"`
+	StartDate   string          `json:"startDate"`
+	EndDate     string          `json:"endDate"`
 	CreatedAt   string          `json:"createdAt"`
 	Attachments []sscAttachment `json:"attachments"`
 }
@@ -56,7 +58,7 @@ type sscResponse struct {
 }
 
 func (s *SSCScraper) FetchNotices() ([]models.RawNotice, error) {
-	apiURL := "https://ssc.gov.in/api/general-website/portal/notice-boards?page=1&limit=25&order=DESC&isAttachment=true&attributes=id,headline,startDate,endDate,language"
+	apiURL := "https://ssc.gov.in/api/general-website/portal/notice-boards?page=1&limit=50&order=DESC&isAttachment=true&attributes=id,headline,startDate,endDate,language"
 
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
@@ -102,13 +104,18 @@ func (s *SSCScraper) FetchNotices() ([]models.RawNotice, error) {
 			pdfURL = fmt.Sprintf("https://ssc.gov.in/api/attachment/%s", strings.TrimPrefix(cleanPath, "/"))
 		}
 
+		pubDate := item.StartDate
+		if pubDate == "" {
+			pubDate = item.CreatedAt
+		}
+
 		notices = append(notices, models.RawNotice{
 			SourcePortal: "SSC",
 			NoticeTitle:  headline,
 			NoticeURL:    pdfURL,
-			PublishedAt:  item.CreatedAt,
+			PublishedAt:  pubDate,
 			FetchedAt:    time.Now(),
-			ContentText:  fmt.Sprintf("Title: %s | Source: Staff Selection Commission (Official) | Official PDF: %s", headline, pdfURL),
+			ContentText:  fmt.Sprintf("Title: %s | Source: Staff Selection Commission (Official) | Start Date: %s | Last Date: %s | Official PDF: %s", headline, item.StartDate, item.EndDate, pdfURL),
 		})
 	}
 
