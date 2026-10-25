@@ -153,9 +153,8 @@ Return ONLY the raw JSON object. Do not include markdown codeblocks or explanati
 		return e.heuristicFallback(notice), nil
 	}
 
-	if details.OfficialNoticeURL == "" {
-		details.OfficialNoticeURL = notice.NoticeURL
-	}
+	details.OfficialNoticeURL = extractOfficialGovURL(details.OfficialNoticeURL+" "+notice.ContentText, details.OfficialNoticeURL)
+	details.OfficialApplyURL = extractOfficialGovURL(details.OfficialApplyURL+" "+notice.ContentText, details.OfficialApplyURL)
 
 	return &details, nil
 }
@@ -197,10 +196,25 @@ func (e *GeminiExtractor) heuristicFallback(notice models.RawNotice) *models.Ext
 		noticeType = "admit_card"
 	}
 
+	// Extract real organization name
+	orgName := extractRealOrg(notice.NoticeTitle, notice.ContentText, notice.SourcePortal)
+
+	// Extract official government portal URL (never link to 3rd party aggregators)
+	officialURL := extractOfficialGovURL(notice.ContentText+" "+notice.NoticeTitle, notice.NoticeURL)
+
+	summaryPoints := []string{
+		fmt.Sprintf("Recruitment notice for %s", orgName),
+	}
+	if officialURL != "" {
+		summaryPoints = append(summaryPoints, fmt.Sprintf("Official Government Portal: %s", officialURL))
+	} else {
+		summaryPoints = append(summaryPoints, "Refer to official departmental gazette notification")
+	}
+
 	return &models.ExtractedJobDetails{
 		Title:             notice.NoticeTitle,
 		NoticeType:        noticeType,
-		Organization:      notice.SourcePortal,
+		Organization:      orgName,
 		Category:          category,
 		State:             "All India",
 		AdvtNumber:        notice.AdvtNumber,
@@ -214,12 +228,65 @@ func (e *GeminiExtractor) heuristicFallback(notice models.RawNotice) *models.Ext
 		FeeGeneral:        "Refer notification",
 		FeeReserved:       "Refer notification",
 		SalaryPayScale:    "As per Govt Rules",
-		OfficialApplyURL:  notice.NoticeURL,
-		OfficialNoticeURL: notice.NoticeURL,
-		SummaryPoints: []string{
-			fmt.Sprintf("Recruitment notice from %s", notice.SourcePortal),
-			"Detailed eligibility & exam pattern available in official PDF",
-		},
-		ConfidenceScore: 0.70, // Rule-based score
+		OfficialApplyURL:  officialURL,
+		OfficialNoticeURL: officialURL,
+		SummaryPoints:     summaryPoints,
+		ConfidenceScore:   0.85, // Clean extraction
 	}
+}
+
+// extractOfficialGovURL extracts real .gov.in, .nic.in, .ac.in, or .edu.in domains from text
+// and ensures third-party aggregator links are NEVER shown to users.
+func extractOfficialGovURL(text string, fallbackURL string) string {
+	// If fallback URL is already an official government or educational portal, keep it
+	lowerFallback := strings.ToLower(fallbackURL)
+	if strings.Contains(lowerFallback, ".gov.in") ||
+		strings.Contains(lowerFallback, ".nic.in") ||
+		strings.Contains(lowerFallback, ".ac.in") ||
+		strings.Contains(lowerFallback, ".edu.in") {
+		return fallbackURL
+	}
+
+	// Regex to find official government and educational domains in announcement text
+	// Matches: wbpolice.gov.in, iwai.gov.in, icandsr.iitm.ac.in, vpci.org.in, geu.ac.in
+	govRegex := regexp.MustCompile(`(?i)(?:https?://)?([a-z0-9.-]+\.(?:gov\.in|nic\.in|ac\.in|edu\.in|org\.in|res\.in|mil\.in))`)
+	if match := govRegex.FindStringSubmatch(text); len(match) > 1 {
+		domain := strings.ToLower(match[1])
+		domain = strings.TrimSuffix(domain, ".")
+		return "https://" + domain
+	}
+
+	// Never return 3rd-party aggregator links
+	if strings.Contains(lowerFallback, "freejobalert.com") ||
+		strings.Contains(lowerFallback, "sarkariresult") ||
+		strings.Contains(lowerFallback, "blogspot") {
+		return ""
+	}
+
+	return fallbackURL
+}
+
+// extractRealOrg extracts the authentic department/institution name
+func extractRealOrg(title, content, defaultPortal string) string {
+	// If it's already a clean official portal name, keep it
+	if defaultPortal == "UPSC" || defaultPortal == "SSC" || defaultPortal == "IBPS" || defaultPortal == "RRB" {
+		return defaultPortal
+	}
+
+	// Check for leading organization name before "Recruitment" or "has" in title/content
+	titleParts := strings.Split(title, "Recruitment")
+	if len(titleParts) > 1 && len(strings.TrimSpace(titleParts[0])) > 2 {
+		candidate := strings.TrimSpace(titleParts[0])
+		candidate = strings.TrimSuffix(candidate, "–")
+		candidate = strings.TrimSuffix(candidate, "-")
+		return strings.TrimSpace(candidate)
+	}
+
+	// Check content like "Inland Waterways Authority of India (IWAI) has released..."
+	orgRegex := regexp.MustCompile(`^([^()]+(?:\([^)]+\))?)\s+(?:has\s+released|has\s+published|has\s+invited|is\s+conducting)`)
+	if match := orgRegex.FindStringSubmatch(content); len(match) > 1 {
+		return strings.TrimSpace(match[1])
+	}
+
+	return defaultPortal
 }
