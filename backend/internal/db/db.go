@@ -4,20 +4,73 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	_ "github.com/lib/pq"
 	_ "modernc.org/sqlite"
 	"rojgarbridge-backend/internal/models"
 )
 
 type DB struct {
-	conn *sql.DB
-	mu   sync.Mutex
+	conn       *sql.DB
+	driverName string // "postgres" or "sqlite"
+	mu         sync.Mutex
 }
 
-func InitDB(dbPath string) (*DB, error) {
+func (d *DB) DriverName() string {
+	return d.driverName
+}
+
+func (d *DB) rebind(query string) string {
+	if d.driverName != "postgres" {
+		return query
+	}
+	var b strings.Builder
+	b.Grow(len(query) + 20)
+	argIdx := 1
+	for i := 0; i < len(query); i++ {
+		if query[i] == '?' {
+			b.WriteString("$")
+			b.WriteString(strconv.Itoa(argIdx))
+			argIdx++
+		} else {
+			b.WriteByte(query[i])
+		}
+	}
+	return b.String()
+}
+
+func InitDB(dbPath, databaseURL string) (*DB, error) {
+	if databaseURL != "" {
+		conn, err := sql.Open("postgres", databaseURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open postgres database: %w", err)
+		}
+
+		conn.SetMaxOpenConns(25)
+		conn.SetMaxIdleConns(10)
+		conn.SetConnMaxLifetime(5 * time.Minute)
+
+		if err := conn.Ping(); err != nil {
+			return nil, fmt.Errorf("failed to ping postgres database: %w", err)
+		}
+
+		db := &DB{conn: conn, driverName: "postgres"}
+		if err := db.migrate(); err != nil {
+			return nil, fmt.Errorf("postgres migration failed: %w", err)
+		}
+
+		if err := db.EnsurePublishedJobs(); err != nil {
+			return nil, fmt.Errorf("failed ensuring published jobs: %w", err)
+		}
+
+		return db, nil
+	}
+
+	// Fallback to SQLite
 	conn, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite database: %w", err)
@@ -36,9 +89,9 @@ func InitDB(dbPath string) (*DB, error) {
 	conn.SetMaxOpenConns(25)
 	conn.SetMaxIdleConns(10)
 
-	db := &DB{conn: conn}
+	db := &DB{conn: conn, driverName: "sqlite"}
 	if err := db.migrate(); err != nil {
-		return nil, fmt.Errorf("migration failed: %w", err)
+		return nil, fmt.Errorf("sqlite migration failed: %w", err)
 	}
 
 	if err := db.EnsurePublishedJobs(); err != nil {
@@ -70,6 +123,42 @@ func (d *DB) EnsurePublishedJobs() error {
 }
 
 func (d *DB) migrate() error {
+	if d.driverName == "postgres" {
+		query := `
+		CREATE OR REPLACE FUNCTION json_extract(j jsonb, path text) RETURNS text AS $$
+		BEGIN
+			RETURN j ->> substring(path from 3);
+		END;
+		$$ LANGUAGE plpgsql IMMUTABLE;
+
+		CREATE OR REPLACE FUNCTION safe_cast_int(val text) RETURNS integer AS $$
+		BEGIN
+			RETURN COALESCE(val::integer, 0);
+		EXCEPTION WHEN OTHERS THEN
+			RETURN 0;
+		END;
+		$$ LANGUAGE plpgsql IMMUTABLE;
+
+		CREATE TABLE IF NOT EXISTS jobs (
+			id SERIAL PRIMARY KEY,
+			hash TEXT UNIQUE NOT NULL,
+			source_portal TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'draft',
+			raw_notice JSONB NOT NULL,
+			details JSONB NOT NULL,
+			review_notes TEXT DEFAULT '',
+			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			published_at TIMESTAMPTZ
+		);
+		CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+		CREATE INDEX IF NOT EXISTS idx_jobs_hash ON jobs(hash);
+		CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at DESC);
+		`
+		_, err := d.conn.Exec(query)
+		return err
+	}
+
 	query := `
 	CREATE TABLE IF NOT EXISTS jobs (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,7 +182,7 @@ func (d *DB) migrate() error {
 
 func (d *DB) ExistsByHash(hash string) (bool, error) {
 	var count int
-	err := d.conn.QueryRow("SELECT COUNT(1) FROM jobs WHERE hash = ?", hash).Scan(&count)
+	err := d.conn.QueryRow(d.rebind("SELECT COUNT(1) FROM jobs WHERE hash = ?"), hash).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -115,6 +204,24 @@ func (d *DB) SaveDraft(job *models.Job) error {
 	}
 
 	now := time.Now()
+	if d.driverName == "postgres" {
+		query := `
+		INSERT INTO jobs (hash, source_portal, status, raw_notice, details, review_notes, created_at, updated_at)
+		VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8)
+		RETURNING id
+		`
+		var id int64
+		err := d.conn.QueryRow(query, job.Hash, job.SourcePortal, models.StatusDraft, string(rawJSON), string(detailsJSON), job.ReviewNotes, now, now).Scan(&id)
+		if err != nil {
+			return fmt.Errorf("failed to insert draft: %w", err)
+		}
+		job.ID = id
+		job.Status = models.StatusDraft
+		job.CreatedAt = now
+		job.UpdatedAt = now
+		return nil
+	}
+
 	query := `
 	INSERT INTO jobs (hash, source_portal, status, raw_notice, details, review_notes, created_at, updated_at)
 	VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -159,7 +266,11 @@ func (d *DB) QueryJobs(params JobFilterParams) ([]models.Job, int, error) {
 	// 2. Search query across all relevant fields
 	if strings.TrimSpace(params.Query) != "" {
 		term := "%" + strings.TrimSpace(params.Query) + "%"
-		whereClauses = append(whereClauses, "(json_extract(details, '$.title') LIKE ? OR json_extract(details, '$.organization') LIKE ? OR json_extract(details, '$.advt_number') LIKE ? OR json_extract(details, '$.qualification') LIKE ? OR json_extract(details, '$.category') LIKE ? OR json_extract(details, '$.state') LIKE ? OR source_portal LIKE ? OR raw_notice LIKE ?)")
+		if d.driverName == "postgres" {
+			whereClauses = append(whereClauses, "(json_extract(details, '$.title') ILIKE ? OR json_extract(details, '$.organization') ILIKE ? OR json_extract(details, '$.advt_number') ILIKE ? OR json_extract(details, '$.qualification') ILIKE ? OR json_extract(details, '$.category') ILIKE ? OR json_extract(details, '$.state') ILIKE ? OR source_portal ILIKE ? OR raw_notice::text ILIKE ?)")
+		} else {
+			whereClauses = append(whereClauses, "(json_extract(details, '$.title') LIKE ? OR json_extract(details, '$.organization') LIKE ? OR json_extract(details, '$.advt_number') LIKE ? OR json_extract(details, '$.qualification') LIKE ? OR json_extract(details, '$.category') LIKE ? OR json_extract(details, '$.state') LIKE ? OR source_portal LIKE ? OR raw_notice LIKE ?)")
+		}
 		args = append(args, term, term, term, term, term, term, term, term)
 	}
 
@@ -282,7 +393,7 @@ func (d *DB) QueryJobs(params JobFilterParams) ([]models.Job, int, error) {
 	}
 
 	// 1. Total matching count
-	countQuery := "SELECT COUNT(1) FROM jobs" + whereSQL
+	countQuery := d.rebind("SELECT COUNT(1) FROM jobs" + whereSQL)
 	var totalCount int
 	if err := d.conn.QueryRow(countQuery, args...).Scan(&totalCount); err != nil {
 		return nil, 0, err
@@ -292,7 +403,11 @@ func (d *DB) QueryJobs(params JobFilterParams) ([]models.Job, int, error) {
 	orderSQL := " ORDER BY COALESCE(published_at, created_at) DESC, id DESC"
 	switch strings.ToLower(params.SortBy) {
 	case "posts":
-		orderSQL = " ORDER BY CAST(json_extract(details, '$.total_vacancies') AS INTEGER) DESC, id DESC"
+		if d.driverName == "postgres" {
+			orderSQL = " ORDER BY safe_cast_int(json_extract(details, '$.total_vacancies')) DESC, id DESC"
+		} else {
+			orderSQL = " ORDER BY CAST(json_extract(details, '$.total_vacancies') AS INTEGER) DESC, id DESC"
+		}
 	case "deadline":
 		orderSQL = " ORDER BY CASE WHEN json_extract(details, '$.application_end') IS NULL OR json_extract(details, '$.application_end') = '' OR json_extract(details, '$.application_end') LIKE '%Refer%' THEN 1 ELSE 0 END, json_extract(details, '$.application_end') ASC, id DESC"
 	case "latest":
@@ -307,7 +422,7 @@ func (d *DB) QueryJobs(params JobFilterParams) ([]models.Job, int, error) {
 		queryArgs = append(queryArgs, params.Limit, params.Offset)
 	}
 
-	rows, err := d.conn.Query(selectQuery, queryArgs...)
+	rows, err := d.conn.Query(d.rebind(selectQuery), queryArgs...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -370,7 +485,7 @@ func (d *DB) BulkPublish(ids []int64) (int64, error) {
 	now := time.Now()
 	if len(ids) == 0 {
 		query := `UPDATE jobs SET status = ?, published_at = ?, updated_at = ? WHERE status = ?`
-		res, err := d.conn.Exec(query, models.StatusPublished, now, now, models.StatusDraft)
+		res, err := d.conn.Exec(d.rebind(query), models.StatusPublished, now, now, models.StatusDraft)
 		if err != nil {
 			return 0, err
 		}
@@ -388,7 +503,7 @@ func (d *DB) BulkPublish(ids []int64) (int64, error) {
 	}
 
 	query := fmt.Sprintf(`UPDATE jobs SET status = ?, published_at = ?, updated_at = ? WHERE id IN (%s)`, strings.Join(placeholders, ","))
-	res, err := d.conn.Exec(query, args...)
+	res, err := d.conn.Exec(d.rebind(query), args...)
 	if err != nil {
 		return 0, err
 	}
@@ -435,7 +550,7 @@ func (d *DB) GetClosingSoonJobs(days int, limit int) ([]models.Job, error) {
 	ORDER BY created_at DESC
 	LIMIT ?
 	`
-	rows, err := d.conn.Query(query, limit)
+	rows, err := d.conn.Query(d.rebind(query), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -469,7 +584,11 @@ func (d *DB) GetAnalytics() (map[string]interface{}, error) {
 	analytics["total_jobs"] = totalJobs
 
 	var totalVacancies int
-	_ = d.conn.QueryRow("SELECT COALESCE(SUM(CAST(json_extract(details, '$.total_vacancies') AS INTEGER)), 0) FROM jobs").Scan(&totalVacancies)
+	if d.driverName == "postgres" {
+		_ = d.conn.QueryRow("SELECT COALESCE(SUM(safe_cast_int(json_extract(details, '$.total_vacancies'))), 0) FROM jobs").Scan(&totalVacancies)
+	} else {
+		_ = d.conn.QueryRow("SELECT COALESCE(SUM(CAST(json_extract(details, '$.total_vacancies') AS INTEGER)), 0) FROM jobs").Scan(&totalVacancies)
+	}
 	analytics["total_vacancies"] = totalVacancies
 
 	// Breakdown by notice type
@@ -542,7 +661,7 @@ func (d *DB) GetRecentPublished(limit int) ([]models.Job, error) {
 	ORDER BY created_at DESC
 	LIMIT ?
 	`
-	rows, err := d.conn.Query(query, limit)
+	rows, err := d.conn.Query(d.rebind(query), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -578,7 +697,7 @@ func (d *DB) GetJobByID(id int64) (*models.Job, error) {
 	var rawStr, detStr string
 	var pubAt sql.NullTime
 
-	err := d.conn.QueryRow(query, id).Scan(&j.ID, &j.Hash, &j.SourcePortal, &j.Status, &rawStr, &detStr, &j.ReviewNotes, &j.CreatedAt, &j.UpdatedAt, &pubAt)
+	err := d.conn.QueryRow(d.rebind(query), id).Scan(&j.ID, &j.Hash, &j.SourcePortal, &j.Status, &rawStr, &detStr, &j.ReviewNotes, &j.CreatedAt, &j.UpdatedAt, &pubAt)
 	if err != nil {
 		return nil, err
 	}
@@ -603,12 +722,22 @@ func (d *DB) UpdateJob(job *models.Job) error {
 	}
 
 	now := time.Now()
-	query := `
-	UPDATE jobs
-	SET details = ?, review_notes = ?, updated_at = ?
-	WHERE id = ?
-	`
-	_, err = d.conn.Exec(query, string(detailsJSON), job.ReviewNotes, now, job.ID)
+	var query string
+	if d.driverName == "postgres" {
+		query = `
+		UPDATE jobs
+		SET details = $1::jsonb, review_notes = $2, updated_at = $3
+		WHERE id = $4
+		`
+		_, err = d.conn.Exec(query, string(detailsJSON), job.ReviewNotes, now, job.ID)
+	} else {
+		query = `
+		UPDATE jobs
+		SET details = ?, review_notes = ?, updated_at = ?
+		WHERE id = ?
+		`
+		_, err = d.conn.Exec(query, string(detailsJSON), job.ReviewNotes, now, job.ID)
+	}
 	return err
 }
 
@@ -622,7 +751,7 @@ func (d *DB) PublishJob(id int64) error {
 	SET status = ?, published_at = ?, updated_at = ?
 	WHERE id = ?
 	`
-	_, err := d.conn.Exec(query, models.StatusPublished, now, now, id)
+	_, err := d.conn.Exec(d.rebind(query), models.StatusPublished, now, now, id)
 	return err
 }
 
@@ -636,7 +765,7 @@ func (d *DB) RejectJob(id int64, reason string) error {
 	SET status = ?, review_notes = ?, updated_at = ?
 	WHERE id = ?
 	`
-	_, err := d.conn.Exec(query, models.StatusRejected, reason, now, id)
+	_, err := d.conn.Exec(d.rebind(query), models.StatusRejected, reason, now, id)
 	return err
 }
 

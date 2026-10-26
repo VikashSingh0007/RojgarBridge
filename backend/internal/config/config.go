@@ -2,18 +2,48 @@ package config
 
 import (
 	"os"
+	"strings"
 )
 
 type Config struct {
 	Port             string
 	DBPath           string
+	DatabaseURL      string
 	GeminiAPIKey     string
 	Environment      string
 	TelegramBotToken string
 	TelegramChatID   string
 }
 
+func loadDotEnv() {
+	paths := []string{".env", "../.env"}
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		lines := strings.Split(string(data), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(parts[0])
+				val := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+				if os.Getenv(key) == "" {
+					os.Setenv(key, val)
+				}
+			}
+		}
+		break
+	}
+}
+
 func Load() *Config {
+	loadDotEnv()
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -24,6 +54,7 @@ func Load() *Config {
 		dbPath = "rojgarbridge.db"
 	}
 
+	databaseURL := os.Getenv("DATABASE_URL")
 	apiKey := os.Getenv("GEMINI_API_KEY")
 
 	env := os.Getenv("ENV")
@@ -37,6 +68,7 @@ func Load() *Config {
 	return &Config{
 		Port:             port,
 		DBPath:           dbPath,
+		DatabaseURL:      databaseURL,
 		GeminiAPIKey:     apiKey,
 		Environment:      env,
 		TelegramBotToken: tgToken,
