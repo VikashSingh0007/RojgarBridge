@@ -42,7 +42,7 @@ export default function Navbar({ onSearchClick }: NavbarProps) {
 
             <div className="flex flex-col">
               <span className="text-2xl font-black tracking-tight text-slate-900 leading-none">
-                Naukri<span className="text-blue-600">Setu</span>
+                Naukri<span className="text-blue-600">Bridge</span>
               </span>
               <span className="text-[11px] font-medium text-slate-500 tracking-wide mt-1">
                 Sarkari Naukri, Simplified.

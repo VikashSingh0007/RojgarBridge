@@ -117,12 +117,13 @@ export function getPortalBadgeStyle(portal: string): { bg: string; text: string;
 }
 
 // LocalStorage Bookmarks Helpers
-const BOOKMARKS_KEY = "naukrisetu_bookmarked_job_ids";
+const BOOKMARKS_KEY = "naukribridge_bookmarked_job_ids";
+const LEGACY_BOOKMARKS_KEY = "naukrisetu_bookmarked_job_ids";
 
 export function getSavedJobIds(): number[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(BOOKMARKS_KEY);
+    const raw = localStorage.getItem(BOOKMARKS_KEY) || localStorage.getItem(LEGACY_BOOKMARKS_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];

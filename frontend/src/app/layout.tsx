@@ -12,8 +12,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "NaukriSetu | Official Sarkari Naukri & Government Job Updates",
-  description: "Explore 100% verified government job notifications, admit cards, results, and syllabus with simplified official updates from UPSC, SSC, RRB, Banking, and State PSCs.",
+  title: "NaukriBridge | Official Sarkari Naukri & Government Job Updates",
+  description: "Explore 100% verified government job notifications, admit cards, results, and syllabus with simplified official updates from UPSC, SSC, RRB, Banking, and State PSCs on NaukriBridge.",
 };
 
 export default function RootLayout({

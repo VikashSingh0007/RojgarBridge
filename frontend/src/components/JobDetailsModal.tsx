@@ -36,7 +36,7 @@ export default function JobDetailsModal({
       d.total_vacancies > 0 ? d.total_vacancies : "Refer PDF"
     }\n⏰ *Last Date:* ${d.application_end || "Refer notice"}\n🔗 *Apply:* ${
       d.official_apply_url || d.official_notice_url || ""
-    }\n\nShared via NaukriSetu`;
+    }\n\nShared via NaukriBridge`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
   };
 

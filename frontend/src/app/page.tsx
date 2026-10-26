@@ -45,10 +45,19 @@ export default function CandidateJobsPage() {
   // Selected Job for Detail Modal
   const [selectedJob, setSelectedJob] = useState<JobItem | null>(null);
 
-  // Mobile Filters Modal State
+  // Mobile & Desktop Filters State
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isConnectedToBackend, setIsConnectedToBackend] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const handleToggleFilters = () => {
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      setIsMobileFilterOpen((prev) => !prev);
+    } else {
+      setIsSidebarOpen((prev) => !prev);
+    }
+  };
 
   // Initialize saved bookmarks from localStorage
   useEffect(() => {
@@ -76,8 +85,8 @@ export default function CandidateJobsPage() {
     const text = `📢 *${d.title}*\n🏢 *Organization:* ${d.organization}\n👤 *Vacancies:* ${
       d.total_vacancies > 0 ? d.total_vacancies.toLocaleString() : "Refer PDF"
     }\n⏰ *Deadline:* ${d.application_end || "Refer notification"}\n🔗 *Apply:* ${
-      d.official_apply_url || d.official_notice_url || "https://naukrisetu.gov.in"
-    }\n\nShared via NaukriSetu`;
+      d.official_apply_url || d.official_notice_url || "https://naukribridge.gov.in"
+    }\n\nShared via NaukriBridge`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
   }, []);
 
@@ -154,6 +163,21 @@ export default function CandidateJobsPage() {
             const currentSaved = getSavedJobIds();
             list = list.filter((j) => currentSaved.includes(j.id));
             count = list.length;
+          }
+
+          // If production database has 0 published jobs on initial unfiltered load, seamlessly use verified fallback
+          if (
+            list.length === 0 &&
+            count === 0 &&
+            !debouncedQuery.trim() &&
+            cats.length === 0 &&
+            quals.length === 0 &&
+            types.length === 0 &&
+            selectedStates.length === 0 &&
+            !showOnlySaved
+          ) {
+            list = INITIAL_PUBLISHED_JOBS.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+            count = INITIAL_PUBLISHED_JOBS.length;
           }
 
           setJobs(list);
@@ -280,7 +304,8 @@ export default function CandidateJobsPage() {
         selectedCategoryPill={selectedCategoryPill}
         onSelectCategoryPill={setSelectedCategoryPill}
         activeFilterCount={activeFilterCount}
-        onToggleFiltersModal={() => setIsMobileFilterOpen(true)}
+        onToggleFiltersModal={handleToggleFilters}
+        isFiltersOpen={isSidebarOpen}
         onSelectTrendingSearch={(t) => setSearchQuery(t)}
       />
 
@@ -439,35 +464,58 @@ export default function CandidateJobsPage() {
       {/* Main 2-Column Content Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Sidebar Filter (Desktop) */}
-        <aside className="hidden lg:block lg:col-span-3 sticky top-28">
-          <SidebarFilters
-            selectedCategories={selectedCategories}
-            onChangeCategories={setSelectedCategories}
-            selectedQualifications={selectedQualifications}
-            onChangeQualifications={setSelectedQualifications}
-            selectedStates={selectedStates}
-            onChangeStates={setSelectedStates}
-            selectedJobTypes={selectedJobTypes}
-            onChangeJobTypes={setSelectedJobTypes}
-            onClearAll={handleClearAll}
-            activeCount={activeFilterCount}
-          />
-        </aside>
+        {isSidebarOpen && (
+          <aside className="hidden lg:block lg:col-span-3 sticky top-28 transition-all">
+            <SidebarFilters
+              selectedCategories={selectedCategories}
+              onChangeCategories={setSelectedCategories}
+              selectedQualifications={selectedQualifications}
+              onChangeQualifications={setSelectedQualifications}
+              selectedStates={selectedStates}
+              onChangeStates={setSelectedStates}
+              selectedJobTypes={selectedJobTypes}
+              onChangeJobTypes={setSelectedJobTypes}
+              onClearAll={handleClearAll}
+              onClose={() => setIsSidebarOpen(false)}
+              activeCount={activeFilterCount}
+            />
+          </aside>
+        )}
 
-        {/* Right Main Content */}
-        <div className="lg:col-span-9 space-y-3.5">
+        {/* Right Main Content (expands to 12 cols when sidebar is closed) */}
+        <div className={`${isSidebarOpen ? "lg:col-span-9" : "lg:col-span-12"} space-y-3.5 transition-all`}>
           {/* Section Header, View Mode Switcher, & Sort Controls (Compact padding) */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-2xs">
-            <div>
-              <h2 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-                <span>Government Job Notifications</span>
-                {isLoading && (
-                  <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
-                )}
-              </h2>
-              <p className="text-xs text-slate-500">
-                Showing {jobs.length} of <strong className="text-slate-800">{totalCount}</strong> verified notices
-              </p>
+            <div className="flex items-center gap-3">
+              {!isSidebarOpen && (
+                <button
+                  type="button"
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl text-xs font-bold border border-blue-200 shadow-2xs transition-all hover:scale-102"
+                  title="Open filters sidebar"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                  </svg>
+                  <span>Show Filters</span>
+                  {activeFilterCount > 0 && (
+                    <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </button>
+              )}
+              <div>
+                <h2 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                  <span>Government Job Notifications</span>
+                  {isLoading && (
+                    <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
+                  )}
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Showing {jobs.length} of <strong className="text-slate-800">{totalCount}</strong> verified notices
+                </p>
+              </div>
             </div>
 
             <div className="flex items-center gap-2 self-end sm:self-center text-xs">

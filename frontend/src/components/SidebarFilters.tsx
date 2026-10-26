@@ -13,6 +13,7 @@ interface SidebarFiltersProps {
   onChangeJobTypes: (types: string[]) => void;
   onClearAll: () => void;
   onApplyFilters?: () => void;
+  onClose?: () => void;
   activeCount: number;
 }
 
@@ -78,6 +79,7 @@ export default function SidebarFilters({
   onChangeJobTypes,
   onClearAll,
   onApplyFilters,
+  onClose,
   activeCount,
 }: SidebarFiltersProps) {
   const [stateSearch, setStateSearch] = useState("");
@@ -108,14 +110,26 @@ export default function SidebarFilters({
             </span>
           )}
         </div>
-        {activeCount > 0 && (
-          <button
-            onClick={onClearAll}
-            className="text-xs font-semibold text-blue-600 hover:text-blue-700"
-          >
-            Clear All
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {activeCount > 0 && (
+            <button
+              onClick={onClearAll}
+              className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+            >
+              Clear
+            </button>
+          )}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="px-2 py-0.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-xs font-bold transition-colors flex items-center gap-1 border border-slate-200/60 hover:border-slate-300"
+              title="Close filter sidebar"
+            >
+              <span>✕</span>
+              <span>Close</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 1. Category / Sector */}
