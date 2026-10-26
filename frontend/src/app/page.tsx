@@ -1,35 +1,46 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { JobItem } from "@/types";
-import { fetchPublishedJobs, getApiBaseUrl } from "@/lib/api";
+import { fetchPublishedJobs } from "@/lib/api";
 import { INITIAL_PUBLISHED_JOBS } from "@/lib/mockData";
+import { getSavedJobIds, toggleSavedJobId } from "@/lib/formatters";
 import SearchAndCategoryBar from "@/components/SearchAndCategoryBar";
 import SidebarFilters from "@/components/SidebarFilters";
 import JobTableView from "@/components/JobTableView";
+import JobCard from "@/components/JobCard";
 import JobMobileCards from "@/components/JobMobileCards";
 import Pagination from "@/components/Pagination";
 import JobDetailsModal from "@/components/JobDetailsModal";
 
 export default function CandidateJobsPage() {
-  const [jobs, setJobs] = useState<JobItem[]>(INITIAL_PUBLISHED_JOBS);
-  const [totalBackendCount, setTotalBackendCount] = useState<number>(
-    INITIAL_PUBLISHED_JOBS.length
-  );
+  const [jobs, setJobs] = useState<JobItem[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedCategoryPill, setSelectedCategoryPill] = useState("All Jobs");
 
-  // Sidebar Filters State - all start completely empty so no unexpected auto-filters!
+  // Sidebar Filters State
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedQualifications, setSelectedQualifications] = useState<string[]>([]);
   const [selectedStates, setSelectedStates] = useState<string[]>([]);
   const [selectedJobTypes, setSelectedJobTypes] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<"latest" | "deadline" | "posts">("latest");
 
+  // View Mode: Grid (Cards) vs Table
+  const [viewMode, setViewMode] = useState<"table" | "grid">("table");
+
+  // Bookmarks state
+  const [savedJobIds, setSavedJobIds] = useState<number[]>([]);
+  const [showOnlySaved, setShowOnlySaved] = useState(false);
+
+  // Toast feedback state
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const PAGE_SIZE = 10;
+  const PAGE_SIZE = 12;
 
   // Selected Job for Detail Modal
   const [selectedJob, setSelectedJob] = useState<JobItem | null>(null);
@@ -37,31 +48,153 @@ export default function CandidateJobsPage() {
   // Mobile Filters Modal State
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const [isConnectedToBackend, setIsConnectedToBackend] = useState<boolean | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Load from Go Backend API: GET /api/jobs/published
-  const loadPublishedJobs = async () => {
-    setIsLoading(true);
-    try {
-      const res = await fetchPublishedJobs({ limit: 100 });
-      if (res && Array.isArray(res.jobs)) {
-        if (res.jobs.length > 0) {
-          setJobs(res.jobs);
-          setTotalBackendCount(res.count || res.jobs.length);
-        }
-        setIsConnectedToBackend(true);
-      }
-    } catch (err) {
-      console.warn("Using local fallback data (backend connecting...):", err);
-      setIsConnectedToBackend(false);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // Initialize saved bookmarks from localStorage
   useEffect(() => {
-    loadPublishedJobs();
+    setSavedJobIds(getSavedJobIds());
   }, []);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((prev) => (prev === msg ? null : prev));
+    }, 2800);
+  }, []);
+
+  const handleToggleBookmark = useCallback(
+    (id: number) => {
+      const isSaved = toggleSavedJobId(id);
+      setSavedJobIds(getSavedJobIds());
+      showToast(isSaved ? "⭐ Saved to your shortlisted jobs!" : "Removed from shortlisted jobs");
+    },
+    [showToast]
+  );
+
+  const handleShareWhatsApp = useCallback((job: JobItem) => {
+    const d = job.details;
+    const text = `📢 *${d.title}*\n🏢 *Organization:* ${d.organization}\n👤 *Vacancies:* ${
+      d.total_vacancies > 0 ? d.total_vacancies.toLocaleString() : "Refer PDF"
+    }\n⏰ *Deadline:* ${d.application_end || "Refer notification"}\n🔗 *Apply:* ${
+      d.official_apply_url || d.official_notice_url || "https://naukrisetu.gov.in"
+    }\n\nShared via NaukriSetu`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
+  }, []);
+
+  // Debounce search query to prevent excessive queries while typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Reset page to 1 whenever any filter or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    debouncedQuery,
+    selectedCategoryPill,
+    selectedCategories,
+    selectedQualifications,
+    selectedStates,
+    selectedJobTypes,
+    sortBy,
+    showOnlySaved,
+  ]);
+
+  // Fetch data directly from backend
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadFilteredData() {
+      setIsLoading(true);
+      try {
+        const cats = [...selectedCategories];
+        const quals = [...selectedQualifications];
+        const types = [...selectedJobTypes];
+
+        if (selectedCategoryPill !== "All Jobs") {
+          const pill = selectedCategoryPill;
+          if (
+            pill === "10th Pass" ||
+            pill === "12th Pass" ||
+            pill === "Graduate" ||
+            pill === "Engineering"
+          ) {
+            quals.push(pill);
+          } else if (
+            pill === "Recruitment" ||
+            pill === "Admit Card" ||
+            pill === "Result" ||
+            pill === "Answer Key"
+          ) {
+            types.push(pill);
+          } else {
+            cats.push(pill);
+          }
+        }
+
+        const res = await fetchPublishedJobs({
+          q: debouncedQuery.trim() || undefined,
+          category: cats.length > 0 ? cats : undefined,
+          qualification: quals.length > 0 ? quals : undefined,
+          type: types.length > 0 ? types : undefined,
+          state: selectedStates.length > 0 ? selectedStates : undefined,
+          sort: sortBy,
+          limit: showOnlySaved ? 100 : PAGE_SIZE,
+          offset: showOnlySaved ? 0 : (currentPage - 1) * PAGE_SIZE,
+        });
+
+        if (!cancelled && res) {
+          let list = res.jobs || [];
+          let count = res.total !== undefined ? res.total : (res.count || 0);
+
+          if (showOnlySaved) {
+            const currentSaved = getSavedJobIds();
+            list = list.filter((j) => currentSaved.includes(j.id));
+            count = list.length;
+          }
+
+          setJobs(list);
+          setTotalCount(count);
+          setIsConnectedToBackend(true);
+        }
+      } catch (err) {
+        console.warn("Error fetching notifications, showing local backup:", err);
+        if (!cancelled) {
+          setIsConnectedToBackend(false);
+          let list = INITIAL_PUBLISHED_JOBS;
+          if (showOnlySaved) {
+            const currentSaved = getSavedJobIds();
+            list = list.filter((j) => currentSaved.includes(j.id));
+          }
+          setJobs(list.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE));
+          setTotalCount(list.length);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadFilteredData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    debouncedQuery,
+    selectedCategoryPill,
+    selectedCategories,
+    selectedQualifications,
+    selectedStates,
+    selectedJobTypes,
+    sortBy,
+    currentPage,
+    showOnlySaved,
+  ]);
 
   // Compute active filters count
   const activeFilterCount =
@@ -70,7 +203,8 @@ export default function CandidateJobsPage() {
     selectedQualifications.length +
     selectedStates.length +
     selectedJobTypes.length +
-    (searchQuery.trim() ? 1 : 0);
+    (searchQuery.trim() ? 1 : 0) +
+    (showOnlySaved ? 1 : 0);
 
   // Clear all filters
   const handleClearAll = () => {
@@ -80,206 +214,66 @@ export default function CandidateJobsPage() {
     setSelectedJobTypes([]);
     setSelectedCategoryPill("All Jobs");
     setSearchQuery("");
+    setShowOnlySaved(false);
     setCurrentPage(1);
   };
 
-  // Reset page when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [
-    searchQuery,
-    selectedCategoryPill,
-    selectedCategories,
-    selectedQualifications,
-    selectedStates,
-    selectedJobTypes,
-    sortBy,
-  ]);
-
-  // Robust Filter & Search & Sort Logic
-  const filteredAndSortedJobs = useMemo(() => {
-    const list = jobs.filter((job) => {
-      const d = job.details;
-
-      // 1. Search Query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const matches =
-          (d.title && d.title.toLowerCase().includes(q)) ||
-          (d.organization && d.organization.toLowerCase().includes(q)) ||
-          (d.qualification && d.qualification.toLowerCase().includes(q)) ||
-          (d.advt_number && d.advt_number.toLowerCase().includes(q)) ||
-          (d.category && d.category.toLowerCase().includes(q)) ||
-          (d.state && d.state.toLowerCase().includes(q)) ||
-          (job.source_portal && job.source_portal.toLowerCase().includes(q)) ||
-          (d.summary_points &&
-            d.summary_points.some((p) => p.toLowerCase().includes(q)));
-        if (!matches) return false;
-      }
-
-      // 2. Category Pill Filter (e.g. UPSC, SSC, Railway, Bank, 10th Pass, etc.)
-      if (selectedCategoryPill !== "All Jobs") {
-        const pill = selectedCategoryPill.toLowerCase();
-        if (pill === "10th pass") {
-          if (!d.qualification.toLowerCase().includes("10th")) return false;
-        } else if (pill === "12th pass") {
-          if (!d.qualification.toLowerCase().includes("12th")) return false;
-        } else if (pill === "graduate") {
-          if (
-            !d.qualification.toLowerCase().includes("graduate") &&
-            !d.qualification.toLowerCase().includes("degree")
-          ) {
-            return false;
-          }
-        } else if (pill === "engineering") {
-          if (
-            !d.qualification.toLowerCase().includes("b.e") &&
-            !d.qualification.toLowerCase().includes("b.tech") &&
-            !d.qualification.toLowerCase().includes("engineering")
-          ) {
-            return false;
-          }
-        } else if (pill === "medical") {
-          const medText = `${d.title} ${d.qualification} ${d.category}`.toLowerCase();
-          if (
-            !medText.includes("medic") &&
-            !medText.includes("doctor") &&
-            !medText.includes("physician") &&
-            !medText.includes("surgeon") &&
-            !medText.includes("health") &&
-            !medText.includes("ayush")
-          ) {
-            return false;
-          }
-        } else {
-          // General matching for UPSC, SSC, Railway, Bank, State Govt, etc.
-          const text = `${d.title} ${d.organization} ${d.category} ${job.source_portal} ${d.notice_type}`.toLowerCase();
-          if (!text.includes(pill)) return false;
-        }
-      }
-
-      // 3. Category / Sector Filter (from Sidebar)
-      if (selectedCategories.length > 0) {
-        const matchSector = selectedCategories.some((cat) => {
-          const c = cat.toLowerCase();
-          const target = `${d.category} ${d.organization} ${job.source_portal} ${d.title}`.toLowerCase();
-          if (c === "central govt") return target.includes("central") || ["upsc", "ssc", "rrb", "ibps", "isro"].some(p => target.includes(p));
-          if (c === "state govt") return target.includes("state") || ["uppsc", "bpsc", "mppsc", "rpsc", "wbpsc"].some(p => target.includes(p));
-          if (c === "banking") return target.includes("bank") || target.includes("ibps") || target.includes("sbi");
-          if (c === "defence & police") return target.includes("defence") || target.includes("police") || target.includes("army") || target.includes("navy");
-          if (c === "teaching") return target.includes("teach") || target.includes("school") || target.includes("lecturer") || target.includes("principal");
-          if (c === "engineering & psu") return target.includes("engineer") || target.includes("psu") || target.includes("b.tech") || target.includes("isro");
-          return target.includes(c);
-        });
-        if (!matchSector) return false;
-      }
-
-      // 4. Notice Type Filter (from Sidebar)
-      if (selectedJobTypes.length > 0) {
-        const matchNoticeType = selectedJobTypes.some((type) => {
-          const t = type.toLowerCase();
-          const jobType = (d.notice_type || "").toLowerCase().replace("_", " ");
-          if (t.includes("recruitment")) return jobType.includes("recruitment") || !jobType;
-          if (t.includes("admit card")) return jobType.includes("admit");
-          if (t.includes("result")) return jobType.includes("result");
-          if (t.includes("answer key")) return jobType.includes("answer");
-          return jobType.includes(t);
-        });
-        if (!matchNoticeType) return false;
-      }
-
-      // 5. Qualification Filter (from Sidebar)
-      if (selectedQualifications.length > 0) {
-        const qTarget = (d.qualification || "").toLowerCase();
-        const matchesQual = selectedQualifications.some((qual) => {
-          const q = qual.toLowerCase();
-          if (q.includes("10th")) return qTarget.includes("10th") || qTarget.includes("matric");
-          if (q.includes("12th")) return qTarget.includes("12th") || qTarget.includes("intermediate") || qTarget.includes("10+2");
-          if (q.includes("iti")) return qTarget.includes("iti");
-          if (q.includes("diploma")) return qTarget.includes("diploma");
-          if (q.includes("b.tech") || q.includes("b.e")) return qTarget.includes("b.e") || qTarget.includes("b.tech") || qTarget.includes("engineer");
-          if (q.includes("post graduate")) return qTarget.includes("post graduate") || qTarget.includes("pg") || qTarget.includes("master");
-          if (q.includes("graduate")) return qTarget.includes("graduate") || qTarget.includes("degree") || qTarget.includes("bachelor");
-          if (q.includes("ca") || q.includes("finance")) return qTarget.includes("ca") || qTarget.includes("finance");
-          return qTarget.includes(q);
-        });
-        if (!matchesQual) return false;
-      }
-
-      // 6. State Filter (from Sidebar)
-      if (selectedStates.length > 0) {
-        const jobState = (d.state || "All India").toLowerCase();
-        const isAllIndia = jobState.includes("all india");
-        const matchesState =
-          isAllIndia ||
-          selectedStates.some(
-            (st) => st.toLowerCase() === jobState || jobState.includes(st.toLowerCase())
-          );
-        if (!matchesState) return false;
-      }
-
-      return true;
-    });
-
-    // Sorting
-    return [...list].sort((a, b) => {
-      if (sortBy === "posts") {
-        return (b.details.total_vacancies || 0) - (a.details.total_vacancies || 0);
-      }
-      if (sortBy === "deadline") {
-        const dateA = a.details.application_end ? new Date(a.details.application_end).getTime() : Infinity;
-        const dateB = b.details.application_end ? new Date(b.details.application_end).getTime() : Infinity;
-        return (isNaN(dateA) ? Infinity : dateA) - (isNaN(dateB) ? Infinity : dateB);
-      }
-      // default: latest
-      const timeA = new Date(a.published_at || a.created_at || 0).getTime();
-      const timeB = new Date(b.published_at || b.created_at || 0).getTime();
-      if (timeA !== timeB) return timeB - timeA;
-      return b.id - a.id;
-    });
-  }, [
-    jobs,
-    searchQuery,
-    selectedCategoryPill,
-    selectedCategories,
-    selectedJobTypes,
-    selectedQualifications,
-    selectedStates,
-    sortBy,
-  ]);
-
-  // Paginated items
-  const totalFilteredCount = filteredAndSortedJobs.length;
-  const totalPages = Math.ceil(totalFilteredCount / PAGE_SIZE) || 1;
-  const paginatedJobs = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return filteredAndSortedJobs.slice(start, start + PAGE_SIZE);
-  }, [filteredAndSortedJobs, currentPage]);
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE) || 1;
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner / Backend Status indicator */}
+    <div className="space-y-4">
+      {/* Toast Notification Popup */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-2xl border border-slate-700 animate-in fade-in slide-in-from-bottom duration-200 flex items-center gap-2">
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Slim & Compact Header Band (Takes minimal screen space) */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-blue-900 text-white px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl shadow-sm border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        <div className="flex items-center gap-2.5">
+          <span className="flex-shrink-0 w-7 h-7 rounded-lg bg-blue-600/30 border border-blue-400/40 flex items-center justify-center text-sm">
+            🇮🇳
+          </span>
+          <div>
+            <h1 className="text-sm sm:text-base font-extrabold tracking-tight leading-tight">
+              Official Government Job Notifications & Updates
+            </h1>
+            <p className="text-[11px] text-slate-300">
+              Verified notices from UPSC, SSC, Railway, Banking, Defence & State Commissions
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs self-start sm:self-center">
+          <span className="px-2.5 py-0.5 rounded-full bg-white/10 text-slate-200 border border-white/15 text-[11px] font-semibold whitespace-nowrap">
+            ✓ 100+ Live Notices
+          </span>
+          <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[11px] font-bold whitespace-nowrap">
+            Updated Today
+          </span>
+        </div>
+      </div>
+
+      {/* Connection Notice (Only shown if server is offline, clean non-technical text) */}
       {isConnectedToBackend === false && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-2.5 rounded-xl text-xs flex items-center justify-between">
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 px-3.5 py-2 rounded-xl text-xs flex items-center justify-between shadow-2xs">
           <div className="flex items-center gap-2">
             <span>ℹ️</span>
             <span>
-              <strong>Notice:</strong> Showing preloaded published notifications. Backend API configured at{" "}
-              <code className="font-mono bg-amber-100 px-1 py-0.5 rounded">
-                {getApiBaseUrl()}/api/jobs/published
-              </code>
+              Showing preloaded official notifications. Connecting to live updates server...
             </span>
           </div>
           <button
-            onClick={loadPublishedJobs}
-            className="font-semibold text-blue-700 underline hover:text-blue-900 ml-2"
+            onClick={() => setCurrentPage(1)}
+            className="font-bold text-blue-700 hover:underline ml-2"
           >
-            Retry Connection ↻
+            Refresh ↻
           </button>
         </div>
       )}
 
-      {/* Search & Category Pills Top Section */}
+      {/* Search & Category Pills */}
       <SearchAndCategoryBar
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -287,12 +281,13 @@ export default function CandidateJobsPage() {
         onSelectCategoryPill={setSelectedCategoryPill}
         activeFilterCount={activeFilterCount}
         onToggleFiltersModal={() => setIsMobileFilterOpen(true)}
+        onSelectTrendingSearch={(t) => setSearchQuery(t)}
       />
 
-      {/* Breadcrumb & Quick Actions */}
-      <div className="flex items-center justify-between pt-1">
-        <nav className="flex items-center gap-2 text-xs font-medium text-slate-500">
-          <Link href="/" className="hover:text-blue-600 cursor-pointer">
+      {/* Breadcrumb & Saved Shortlist Button */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+        <nav className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+          <Link href="/" className="hover:text-blue-600">
             Home
           </Link>
           <span>›</span>
@@ -300,29 +295,49 @@ export default function CandidateJobsPage() {
         </nav>
 
         <div className="flex items-center gap-2">
-          {isLoading && (
-            <span className="text-xs text-blue-600 animate-pulse font-medium">
-              Updating list...
-            </span>
-          )}
+          {/* Saved Bookmarks Toggle Button */}
+          <button
+            onClick={() => setShowOnlySaved(!showOnlySaved)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+              showOnlySaved
+                ? "bg-amber-50 text-amber-700 border-amber-300 shadow-2xs scale-102"
+                : "bg-white hover:bg-slate-50 text-slate-600 border-slate-200"
+            }`}
+          >
+            <span>{showOnlySaved ? "⭐" : "☆"}</span>
+            <span>Saved Jobs ({savedJobIds.length})</span>
+          </button>
+
+          {/* Admin Review Portal */}
           <Link
             href="/admin"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors"
+            className="inline-flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors"
           >
             <span>🛡️ Admin Portal</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
           </Link>
         </div>
       </div>
 
-      {/* Active Filter Chips / Badges Bar */}
+      {/* Active Filter Chips Bar (Student-friendly non-technical wording) */}
       {activeFilterCount > 0 && (
-        <div className="flex flex-wrap items-center gap-2 bg-slate-100/70 p-3 rounded-xl border border-slate-200 text-xs">
-          <span className="font-bold text-slate-600">Active Filters:</span>
+        <div className="flex flex-wrap items-center gap-1.5 bg-slate-100/80 p-2.5 rounded-xl border border-slate-200 text-xs">
+          <span className="font-bold text-slate-600">Applied Filters:</span>
+
+          {showOnlySaved && (
+            <span className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-300 text-amber-800 px-2 py-0.5 rounded-full font-bold shadow-2xs">
+              ⭐ Shortlisted Jobs Only
+              <button
+                onClick={() => setShowOnlySaved(false)}
+                className="hover:text-red-600 font-bold ml-0.5"
+              >
+                ✕
+              </button>
+            </span>
+          )}
 
           {searchQuery.trim() && (
-            <span className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-2.5 py-1 rounded-full font-medium shadow-2xs">
-              Keyword: &quot;{searchQuery}&quot;
+            <span className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-2 py-0.5 rounded-full font-medium shadow-2xs">
+              Search: &quot;{searchQuery}&quot;
               <button
                 onClick={() => setSearchQuery("")}
                 className="hover:text-red-600 font-bold ml-0.5"
@@ -333,7 +348,7 @@ export default function CandidateJobsPage() {
           )}
 
           {selectedCategoryPill !== "All Jobs" && (
-            <span className="inline-flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-700 px-2.5 py-1 rounded-full font-semibold shadow-2xs">
+            <span className="inline-flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-700 px-2 py-0.5 rounded-full font-bold shadow-2xs">
               {selectedCategoryPill}
               <button
                 onClick={() => setSelectedCategoryPill("All Jobs")}
@@ -347,7 +362,7 @@ export default function CandidateJobsPage() {
           {selectedCategories.map((cat) => (
             <span
               key={cat}
-              className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-2.5 py-1 rounded-full font-medium shadow-2xs"
+              className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-2 py-0.5 rounded-full font-medium shadow-2xs"
             >
               Sector: {cat}
               <button
@@ -364,7 +379,7 @@ export default function CandidateJobsPage() {
           {selectedJobTypes.map((type) => (
             <span
               key={type}
-              className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-2.5 py-1 rounded-full font-medium shadow-2xs"
+              className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-2 py-0.5 rounded-full font-medium shadow-2xs"
             >
               Type: {type}
               <button
@@ -381,9 +396,9 @@ export default function CandidateJobsPage() {
           {selectedQualifications.map((qual) => (
             <span
               key={qual}
-              className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-2.5 py-1 rounded-full font-medium shadow-2xs"
+              className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-2 py-0.5 rounded-full font-medium shadow-2xs"
             >
-              Qual: {qual}
+              Qualification: {qual}
               <button
                 onClick={() =>
                   setSelectedQualifications((prev) => prev.filter((x) => x !== qual))
@@ -398,7 +413,7 @@ export default function CandidateJobsPage() {
           {selectedStates.map((st) => (
             <span
               key={st}
-              className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-2.5 py-1 rounded-full font-medium shadow-2xs"
+              className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-2 py-0.5 rounded-full font-medium shadow-2xs"
             >
               State: {st}
               <button
@@ -422,7 +437,7 @@ export default function CandidateJobsPage() {
       )}
 
       {/* Main 2-Column Content Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Sidebar Filter (Desktop) */}
         <aside className="hidden lg:block lg:col-span-3 sticky top-28">
           <SidebarFilters
@@ -439,101 +454,192 @@ export default function CandidateJobsPage() {
           />
         </aside>
 
-        {/* Right Main Table & Listings */}
-        <div className="lg:col-span-9 space-y-4">
-          {/* Section Header & Sort Controls */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        {/* Right Main Content */}
+        <div className="lg:col-span-9 space-y-3.5">
+          {/* Section Header, View Mode Switcher, & Sort Controls (Compact padding) */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-2xs">
             <div>
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                Government Job Notifications
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                Official, verified government recruitment notices, admit cards, and results.
+              <h2 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                <span>Government Job Notifications</span>
+                {isLoading && (
+                  <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
+                )}
+              </h2>
+              <p className="text-xs text-slate-500">
+                Showing {jobs.length} of <strong className="text-slate-800">{totalCount}</strong> verified notices
               </p>
             </div>
 
-            <div className="flex items-center gap-3 self-end sm:self-center text-xs">
-              <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-2xs">
-                <span className="text-slate-500">Sort by</span>
+            <div className="flex items-center gap-2 self-end sm:self-center text-xs">
+              {/* View Mode Toggle: Table vs Grid */}
+              <div className="hidden sm:flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                <button
+                  onClick={() => setViewMode("table")}
+                  className={`px-2.5 py-1 rounded-md font-bold flex items-center gap-1 transition-all ${
+                    viewMode === "table"
+                      ? "bg-white text-slate-900 shadow-2xs"
+                      : "text-slate-500 hover:text-slate-900"
+                  }`}
+                  title="Table View"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                  </svg>
+                  <span>Table</span>
+                </button>
+                <button
+                  onClick={() => setViewMode("grid")}
+                  className={`px-2.5 py-1 rounded-md font-bold flex items-center gap-1 transition-all ${
+                    viewMode === "grid"
+                      ? "bg-white text-slate-900 shadow-2xs"
+                      : "text-slate-500 hover:text-slate-900"
+                  }`}
+                  title="Grid Cards View"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                  </svg>
+                  <span>Cards</span>
+                </button>
+              </div>
+
+              {/* Sort By Dropdown */}
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg shadow-2xs">
+                <span className="text-slate-500 font-medium">Sort:</span>
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  className="bg-transparent font-bold text-slate-800 focus:outline-none cursor-pointer pr-1"
+                  className="bg-transparent font-bold text-slate-800 focus:outline-none cursor-pointer"
                 >
-                  <option value="latest">Latest</option>
+                  <option value="latest">Latest First</option>
                   <option value="deadline">Closing Soon</option>
                   <option value="posts">Highest Posts</option>
                 </select>
               </div>
-
-              <span className="text-slate-400 font-medium">
-                Showing <strong className="text-slate-800">{totalFilteredCount}</strong>{" "}
-                {totalFilteredCount === 1 ? "job" : "jobs"}
-              </span>
             </div>
           </div>
 
-          {/* Table View (Desktop & Tablet) */}
-          <div className="hidden sm:block">
-            {paginatedJobs.length > 0 ? (
-              <JobTableView
-                jobs={paginatedJobs}
-                onSelectJob={(job) => setSelectedJob(job)}
-              />
-            ) : (
-              <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center space-y-3">
-                <p className="text-slate-600 font-semibold text-base">
-                  No notifications match your active filters
+          {/* Main Listings Display */}
+          {isLoading && jobs.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-3">
+              <div className="animate-spin h-8 w-8 border-3 border-blue-600 border-t-transparent rounded-full mx-auto" />
+              <p className="text-slate-700 font-bold text-sm">
+                Loading notifications...
+              </p>
+            </div>
+          ) : jobs.length > 0 ? (
+            <>
+              {/* Desktop View (Table vs Grid Cards) */}
+              <div className="hidden sm:block">
+                {viewMode === "table" ? (
+                  <JobTableView
+                    jobs={jobs}
+                    savedJobIds={savedJobIds}
+                    onToggleBookmark={handleToggleBookmark}
+                    onSelectJob={(job) => setSelectedJob(job)}
+                    onShareWhatsApp={handleShareWhatsApp}
+                  />
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    {jobs.map((job) => (
+                      <JobCard
+                        key={job.id}
+                        job={job}
+                        isBookmarked={savedJobIds.includes(job.id)}
+                        onToggleBookmark={handleToggleBookmark}
+                        onSelectJob={(j) => setSelectedJob(j)}
+                        onShareWhatsApp={handleShareWhatsApp}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Mobile View (Streamlined Cards) */}
+              <div className="block sm:hidden">
+                <JobMobileCards
+                  jobs={jobs}
+                  savedJobIds={savedJobIds}
+                  onToggleBookmark={handleToggleBookmark}
+                  onSelectJob={(job) => setSelectedJob(job)}
+                  onShareWhatsApp={handleShareWhatsApp}
+                />
+              </div>
+            </>
+          ) : (
+            /* Empty State */
+            <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center space-y-3 shadow-2xs">
+              <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-xl mx-auto">
+                🔍
+              </div>
+              <div className="space-y-0.5">
+                <h3 className="text-base font-extrabold text-slate-800">
+                  {showOnlySaved
+                    ? "No Shortlisted Jobs Found"
+                    : "No notifications found matching your selection"}
+                </h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  {showOnlySaved
+                    ? "Click the star icon (★) on any notice to save it for quick review."
+                    : "Try broadening your search keywords or resetting filters to view all available notices."}
                 </p>
-                <p className="text-xs text-slate-400">
-                  Try clearing some filters or searching with different keywords.
-                </p>
+              </div>
+
+              {/* Recommended Quick Searches */}
+              <div className="pt-1 flex flex-wrap items-center justify-center gap-1.5">
                 <button
-                  onClick={handleClearAll}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors"
+                  onClick={() => setSearchQuery("UPSC")}
+                  className="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-blue-50 text-xs font-semibold text-slate-700"
                 >
-                  Reset All Filters
+                  UPSC
+                </button>
+                <button
+                  onClick={() => setSearchQuery("SSC")}
+                  className="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-blue-50 text-xs font-semibold text-slate-700"
+                >
+                  SSC
+                </button>
+                <button
+                  onClick={() => setSearchQuery("ISRO")}
+                  className="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-blue-50 text-xs font-semibold text-slate-700"
+                >
+                  ISRO
+                </button>
+                <button
+                  onClick={() => setSelectedCategoryPill("Graduate")}
+                  className="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-blue-50 text-xs font-semibold text-slate-700"
+                >
+                  Graduate Jobs
                 </button>
               </div>
-            )}
-          </div>
 
-          {/* Cards View (Mobile Devices) */}
-          <div className="block sm:hidden">
-            {paginatedJobs.length > 0 ? (
-              <JobMobileCards
-                jobs={paginatedJobs}
-                onSelectJob={(job) => setSelectedJob(job)}
-              />
-            ) : (
-              <div className="bg-white rounded-xl border border-dashed border-slate-300 p-8 text-center space-y-2">
-                <p className="text-slate-600 font-semibold text-sm">
-                  No notifications found
-                </p>
-                <button
-                  onClick={handleClearAll}
-                  className="px-3.5 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold"
-                >
-                  Reset Filters
-                </button>
-              </div>
-            )}
-          </div>
+              <button
+                onClick={handleClearAll}
+                className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 shadow-2xs transition-all"
+              >
+                Reset All Filters
+              </button>
+            </div>
+          )}
 
-          {/* Dynamic Pagination */}
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={setCurrentPage}
-            totalItems={totalFilteredCount}
-            pageSize={PAGE_SIZE}
-          />
+          {/* Pagination */}
+          {!showOnlySaved && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+              totalItems={totalCount}
+              pageSize={PAGE_SIZE}
+            />
+          )}
         </div>
       </div>
 
       {/* Details Modal */}
       <JobDetailsModal
         job={selectedJob}
+        isBookmarked={selectedJob ? savedJobIds.includes(selectedJob.id) : false}
+        onToggleBookmark={handleToggleBookmark}
         onClose={() => setSelectedJob(null)}
       />
 

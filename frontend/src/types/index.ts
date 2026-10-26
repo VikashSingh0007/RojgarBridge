@@ -51,7 +51,10 @@ export interface JobItem {
 }
 
 export interface JobListResponse {
+  total?: number;
   count: number;
+  limit?: number;
+  offset?: number;
   jobs: JobItem[];
 }
 

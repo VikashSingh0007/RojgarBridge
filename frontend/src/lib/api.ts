@@ -40,20 +40,50 @@ export async function fetchHealth(): Promise<{ service: string; status: string }
   return res.json();
 }
 
-// 1. Public Jobs Feed
-export async function fetchPublishedJobs(params?: {
-  type?: string;
+export interface FetchJobsParams {
+  q?: string;
+  type?: string | string[];
+  category?: string | string[];
+  qualification?: string | string[];
+  state?: string | string[];
+  sort?: "latest" | "deadline" | "posts" | string;
   limit?: number;
   offset?: number;
-}): Promise<JobListResponse> {
+}
+
+// 1. Public Jobs Feed (DB-driven filtering)
+export async function fetchPublishedJobs(
+  params?: FetchJobsParams
+): Promise<JobListResponse> {
   const query = new URLSearchParams();
-  if (params?.type && params.type !== "all") query.set("type", params.type);
+  if (params?.q && params.q.trim()) query.set("q", params.q.trim());
+  if (params?.type) {
+    const t = Array.isArray(params.type) ? params.type.join(",") : params.type;
+    if (t && t !== "all") query.set("type", t);
+  }
+  if (params?.category) {
+    const cats = Array.isArray(params.category) ? params.category.join(",") : params.category;
+    if (cats && cats !== "all") query.set("category", cats);
+  }
+  if (params?.qualification) {
+    const quals = Array.isArray(params.qualification)
+      ? params.qualification.join(",")
+      : params.qualification;
+    if (quals && quals !== "all") query.set("qualification", quals);
+  }
+  if (params?.state) {
+    const states = Array.isArray(params.state) ? params.state.join(",") : params.state;
+    if (states && states !== "all") query.set("state", states);
+  }
+  if (params?.sort) {
+    query.set("sort", params.sort);
+  }
   if (params?.limit) query.set("limit", params.limit.toString());
   if (params?.offset !== undefined) query.set("offset", params.offset.toString());
 
   const qs = query.toString() ? `?${query.toString()}` : "";
   const res = await fetch(`${getApiBaseUrl()}/api/jobs/published${qs}`, {
-    next: { revalidate: 30 },
+    cache: "no-store",
   });
 
   if (!res.ok) {

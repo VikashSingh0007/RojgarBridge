@@ -1,12 +1,19 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import TopGovernmentBar from "@/components/TopGovernmentBar";
 import Navbar from "@/components/Navbar";
 import MobileBottomNav from "@/components/MobileBottomNav";
 
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
+
 export const metadata: Metadata = {
-  title: "NaukriSetu | Sarkari Naukri, Simplified",
-  description: "Explore government job notifications, admit cards, results, and syllabus with simplified official updates.",
+  title: "NaukriSetu | Official Sarkari Naukri & Government Job Updates",
+  description: "Explore 100% verified government job notifications, admit cards, results, and syllabus with simplified official updates from UPSC, SSC, RRB, Banking, and State PSCs.",
 };
 
 export default function RootLayout({
@@ -15,8 +22,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className="min-h-screen flex flex-col bg-[#f8fafc] text-slate-900 antialiased pb-16 lg:pb-0">
+    <html lang="en" className={inter.variable}>
+      <body className={`${inter.className} min-h-screen flex flex-col bg-[#f8fafc] text-slate-900 antialiased pb-16 lg:pb-0`}>
         <TopGovernmentBar />
         <Navbar />
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
