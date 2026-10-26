@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Banknote,
   Bookmark,
-  Building2,
   CalendarClock,
   Check,
   CheckCircle2,
@@ -126,19 +125,11 @@ export default function JobDetailsModal({
                 {d.title}
               </h2>
 
-              <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 sm:text-sm">
-                <span className="inline-flex items-center gap-1.5">
-                  <Building2 className="h-4 w-4" />
-                  {d.organization}
-                </span>
-                <span className="text-slate-300">•</span>
-                <span className="inline-flex items-center gap-1.5">
+              <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                <span className="mr-1 inline-flex items-center gap-1.5 font-medium sm:text-sm">
                   <MapPin className="h-4 w-4" />
                   {d.state || "All India"}
                 </span>
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-center gap-1.5">
                 {d.category ? (
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
                     {d.category}
@@ -147,11 +138,6 @@ export default function JobDetailsModal({
                 {d.notice_type ? (
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold capitalize text-slate-600">
                     {d.notice_type.replaceAll("_", " ")}
-                  </span>
-                ) : null}
-                {d.advt_number ? (
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-500">
-                    Advt. {d.advt_number}
                   </span>
                 ) : null}
               </div>
