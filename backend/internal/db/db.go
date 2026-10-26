@@ -109,25 +109,146 @@ func (d *DB) SaveDraft(job *models.Job) error {
 	return nil
 }
 
-func (d *DB) GetJobs(status, noticeType, category, state string, limit, offset int) ([]models.Job, int, error) {
+type JobFilterParams struct {
+	Status         string
+	Query          string
+	NoticeTypes    []string
+	Categories     []string
+	Qualifications []string
+	States         []string
+	SortBy         string
+	Limit          int
+	Offset         int
+}
+
+func (d *DB) QueryJobs(params JobFilterParams) ([]models.Job, int, error) {
 	var whereClauses []string
 	var args []interface{}
 
-	if status != "" && status != "all" {
+	// 1. Status (published, draft, etc.)
+	if params.Status != "" && params.Status != "all" {
 		whereClauses = append(whereClauses, "status = ?")
-		args = append(args, status)
+		args = append(args, params.Status)
 	}
-	if noticeType != "" && noticeType != "all" {
-		whereClauses = append(whereClauses, "json_extract(details, '$.notice_type') = ?")
-		args = append(args, noticeType)
+
+	// 2. Search query across all relevant fields
+	if strings.TrimSpace(params.Query) != "" {
+		term := "%" + strings.TrimSpace(params.Query) + "%"
+		whereClauses = append(whereClauses, "(json_extract(details, '$.title') LIKE ? OR json_extract(details, '$.organization') LIKE ? OR json_extract(details, '$.advt_number') LIKE ? OR json_extract(details, '$.qualification') LIKE ? OR json_extract(details, '$.category') LIKE ? OR json_extract(details, '$.state') LIKE ? OR source_portal LIKE ? OR raw_notice LIKE ?)")
+		args = append(args, term, term, term, term, term, term, term, term)
 	}
-	if category != "" && category != "all" {
-		whereClauses = append(whereClauses, "json_extract(details, '$.category') = ?")
-		args = append(args, category)
+
+	// 3. Notice types filter
+	if len(params.NoticeTypes) > 0 {
+		var typeOrs []string
+		for _, t := range params.NoticeTypes {
+			tClean := strings.TrimSpace(strings.ToLower(t))
+			if tClean == "" || tClean == "all" {
+				continue
+			}
+			if strings.Contains(tClean, "recruitment") {
+				typeOrs = append(typeOrs, "(json_extract(details, '$.notice_type') = 'recruitment' OR json_extract(details, '$.notice_type') IS NULL OR json_extract(details, '$.notice_type') = '')")
+			} else if strings.Contains(tClean, "admit") {
+				typeOrs = append(typeOrs, "json_extract(details, '$.notice_type') = 'admit_card'")
+			} else if strings.Contains(tClean, "result") {
+				typeOrs = append(typeOrs, "json_extract(details, '$.notice_type') = 'result'")
+			} else if strings.Contains(tClean, "answer") {
+				typeOrs = append(typeOrs, "json_extract(details, '$.notice_type') = 'answer_key'")
+			} else {
+				typeOrs = append(typeOrs, "json_extract(details, '$.notice_type') = ?")
+				args = append(args, tClean)
+			}
+		}
+		if len(typeOrs) > 0 {
+			whereClauses = append(whereClauses, "("+strings.Join(typeOrs, " OR ")+")")
+		}
 	}
-	if state != "" && state != "all" {
-		whereClauses = append(whereClauses, "json_extract(details, '$.state') = ?")
-		args = append(args, state)
+
+	// 4. Categories & Department sectors
+	if len(params.Categories) > 0 {
+		var catOrs []string
+		for _, cat := range params.Categories {
+			cat = strings.TrimSpace(cat)
+			if cat == "" || cat == "all" {
+				continue
+			}
+			cLower := strings.ToLower(cat)
+			if cLower == "central govt" {
+				catOrs = append(catOrs, "(json_extract(details, '$.category') LIKE '%Central%' OR source_portal IN ('UPSC', 'SSC', 'RRB', 'IBPS', 'ISRO'))")
+			} else if cLower == "state govt" {
+				catOrs = append(catOrs, "(json_extract(details, '$.category') LIKE '%State%' OR source_portal IN ('UPPSC', 'BPSC', 'MPPSC', 'RPSC'))")
+			} else if cLower == "banking" || cLower == "bank" {
+				catOrs = append(catOrs, "(json_extract(details, '$.category') LIKE '%Bank%' OR json_extract(details, '$.organization') LIKE '%Bank%' OR source_portal = 'IBPS')")
+			} else if strings.Contains(cLower, "defence") || strings.Contains(cLower, "police") {
+				catOrs = append(catOrs, "(json_extract(details, '$.category') LIKE '%Defence%' OR json_extract(details, '$.category') LIKE '%Police%' OR json_extract(details, '$.title') LIKE '%Police%' OR json_extract(details, '$.title') LIKE '%Defence%')")
+			} else if strings.Contains(cLower, "teach") {
+				catOrs = append(catOrs, "(json_extract(details, '$.category') LIKE '%Teach%' OR json_extract(details, '$.title') LIKE '%Teacher%' OR json_extract(details, '$.title') LIKE '%Lecturer%' OR json_extract(details, '$.title') LIKE '%Principal%')")
+			} else if strings.Contains(cLower, "engineering") || strings.Contains(cLower, "psu") {
+				catOrs = append(catOrs, "(json_extract(details, '$.category') LIKE '%Engineering%' OR json_extract(details, '$.category') LIKE '%PSU%' OR json_extract(details, '$.title') LIKE '%Engineer%' OR source_portal = 'ISRO')")
+			} else if cLower == "railway" {
+				catOrs = append(catOrs, "(source_portal = 'RRB' OR json_extract(details, '$.organization') LIKE '%Railway%')")
+			} else if cLower == "ssc" {
+				catOrs = append(catOrs, "(source_portal = 'SSC' OR json_extract(details, '$.organization') LIKE '%Staff Selection%')")
+			} else if cLower == "upsc" {
+				catOrs = append(catOrs, "(source_portal = 'UPSC' OR json_extract(details, '$.organization') LIKE '%UPSC%')")
+			} else {
+				catOrs = append(catOrs, "(json_extract(details, '$.category') LIKE ? OR json_extract(details, '$.organization') LIKE ? OR source_portal = ?)")
+				args = append(args, "%"+cat+"%", "%"+cat+"%", cat)
+			}
+		}
+		if len(catOrs) > 0 {
+			whereClauses = append(whereClauses, "("+strings.Join(catOrs, " OR ")+")")
+		}
+	}
+
+	// 5. Qualification filters
+	if len(params.Qualifications) > 0 {
+		var qualOrs []string
+		for _, q := range params.Qualifications {
+			qClean := strings.TrimSpace(q)
+			if qClean == "" {
+				continue
+			}
+			qLower := strings.ToLower(qClean)
+			if strings.Contains(qLower, "10th") {
+				qualOrs = append(qualOrs, "(json_extract(details, '$.qualification') LIKE '%10th%' OR json_extract(details, '$.qualification') LIKE '%Matric%')")
+			} else if strings.Contains(qLower, "12th") {
+				qualOrs = append(qualOrs, "(json_extract(details, '$.qualification') LIKE '%12th%' OR json_extract(details, '$.qualification') LIKE '%Intermediate%' OR json_extract(details, '$.qualification') LIKE '%10+2%')")
+			} else if strings.Contains(qLower, "iti") {
+				qualOrs = append(qualOrs, "json_extract(details, '$.qualification') LIKE '%ITI%'")
+			} else if strings.Contains(qLower, "diploma") {
+				qualOrs = append(qualOrs, "json_extract(details, '$.qualification') LIKE '%Diploma%'")
+			} else if strings.Contains(qLower, "b.tech") || strings.Contains(qLower, "b.e") {
+				qualOrs = append(qualOrs, "(json_extract(details, '$.qualification') LIKE '%B.E%' OR json_extract(details, '$.qualification') LIKE '%B.Tech%' OR json_extract(details, '$.qualification') LIKE '%Engineer%')")
+			} else if strings.Contains(qLower, "post graduate") || strings.Contains(qLower, "pg") {
+				qualOrs = append(qualOrs, "(json_extract(details, '$.qualification') LIKE '%Post Graduate%' OR json_extract(details, '$.qualification') LIKE '%PG%' OR json_extract(details, '$.qualification') LIKE '%Master%')")
+			} else if strings.Contains(qLower, "graduate") {
+				qualOrs = append(qualOrs, "(json_extract(details, '$.qualification') LIKE '%Graduate%' OR json_extract(details, '$.qualification') LIKE '%Degree%')")
+			} else if strings.Contains(qLower, "ca") || strings.Contains(qLower, "finance") {
+				qualOrs = append(qualOrs, "(json_extract(details, '$.qualification') LIKE '%CA%' OR json_extract(details, '$.qualification') LIKE '%Finance%')")
+			} else {
+				qualOrs = append(qualOrs, "json_extract(details, '$.qualification') LIKE ?")
+				args = append(args, "%"+qClean+"%")
+			}
+		}
+		if len(qualOrs) > 0 {
+			whereClauses = append(whereClauses, "("+strings.Join(qualOrs, " OR ")+")")
+		}
+	}
+
+	// 6. States filters
+	if len(params.States) > 0 {
+		var stateOrs []string
+		stateOrs = append(stateOrs, "json_extract(details, '$.state') = 'All India'")
+		for _, st := range params.States {
+			st = strings.TrimSpace(st)
+			if st == "" || strings.EqualFold(st, "all") || strings.EqualFold(st, "all india") {
+				continue
+			}
+			stateOrs = append(stateOrs, "(json_extract(details, '$.state') = ? OR json_extract(details, '$.state') LIKE ?)")
+			args = append(args, st, "%"+st+"%")
+		}
+		whereClauses = append(whereClauses, "("+strings.Join(stateOrs, " OR ")+")")
 	}
 
 	whereSQL := ""
@@ -135,20 +256,30 @@ func (d *DB) GetJobs(status, noticeType, category, state string, limit, offset i
 		whereSQL = " WHERE " + strings.Join(whereClauses, " AND ")
 	}
 
-	// 1. Get total count
+	// 1. Total matching count
 	countQuery := "SELECT COUNT(1) FROM jobs" + whereSQL
 	var totalCount int
 	if err := d.conn.QueryRow(countQuery, args...).Scan(&totalCount); err != nil {
 		return nil, 0, err
 	}
 
-	// 2. Build select query
-	selectQuery := "SELECT id, hash, source_portal, status, raw_notice, details, review_notes, created_at, updated_at, published_at FROM jobs" + whereSQL + " ORDER BY created_at DESC"
+	// 2. Order by
+	orderSQL := " ORDER BY COALESCE(published_at, created_at) DESC, id DESC"
+	switch strings.ToLower(params.SortBy) {
+	case "posts":
+		orderSQL = " ORDER BY CAST(json_extract(details, '$.total_vacancies') AS INTEGER) DESC, id DESC"
+	case "deadline":
+		orderSQL = " ORDER BY CASE WHEN json_extract(details, '$.application_end') IS NULL OR json_extract(details, '$.application_end') = '' OR json_extract(details, '$.application_end') LIKE '%Refer%' THEN 1 ELSE 0 END, json_extract(details, '$.application_end') ASC, id DESC"
+	case "latest":
+		orderSQL = " ORDER BY COALESCE(published_at, created_at) DESC, id DESC"
+	}
+
+	selectQuery := "SELECT id, hash, source_portal, status, raw_notice, details, review_notes, created_at, updated_at, published_at FROM jobs" + whereSQL + orderSQL
 
 	queryArgs := append([]interface{}{}, args...)
-	if limit > 0 {
+	if params.Limit > 0 {
 		selectQuery += " LIMIT ? OFFSET ?"
-		queryArgs = append(queryArgs, limit, offset)
+		queryArgs = append(queryArgs, params.Limit, params.Offset)
 	}
 
 	rows, err := d.conn.Query(selectQuery, queryArgs...)
@@ -179,6 +310,27 @@ func (d *DB) GetJobs(status, noticeType, category, state string, limit, offset i
 	}
 
 	return jobs, totalCount, nil
+}
+
+func (d *DB) GetJobs(status, noticeType, category, state string, limit, offset int) ([]models.Job, int, error) {
+	var nTypes, cats, states []string
+	if noticeType != "" && noticeType != "all" {
+		nTypes = []string{noticeType}
+	}
+	if category != "" && category != "all" {
+		cats = []string{category}
+	}
+	if state != "" && state != "all" {
+		states = []string{state}
+	}
+	return d.QueryJobs(JobFilterParams{
+		Status:      status,
+		NoticeTypes: nTypes,
+		Categories:  cats,
+		States:      states,
+		Limit:       limit,
+		Offset:      offset,
+	})
 }
 
 func (d *DB) GetJobsByStatus(status models.JobStatus, noticeType string, limit, offset int) ([]models.Job, error) {
@@ -219,77 +371,29 @@ func (d *DB) BulkPublish(ids []int64) (int64, error) {
 }
 
 func (d *DB) SearchJobs(q, qual, state, category, noticeType, status string, limit, offset int) ([]models.Job, int, error) {
-	var whereClauses []string
-	var args []interface{}
-
-	if q != "" {
-		searchTerm := "%" + q + "%"
-		whereClauses = append(whereClauses, "(json_extract(details, '$.title') LIKE ? OR json_extract(details, '$.organization') LIKE ? OR json_extract(details, '$.advt_number') LIKE ? OR raw_notice LIKE ?)")
-		args = append(args, searchTerm, searchTerm, searchTerm, searchTerm)
-	}
+	var quals, states, cats, nTypes []string
 	if qual != "" {
-		whereClauses = append(whereClauses, "json_extract(details, '$.qualification') LIKE ?")
-		args = append(args, "%"+qual+"%")
+		quals = []string{qual}
 	}
 	if state != "" && state != "all" {
-		whereClauses = append(whereClauses, "json_extract(details, '$.state') = ?")
-		args = append(args, state)
+		states = []string{state}
 	}
 	if category != "" && category != "all" {
-		whereClauses = append(whereClauses, "json_extract(details, '$.category') = ?")
-		args = append(args, category)
+		cats = []string{category}
 	}
 	if noticeType != "" && noticeType != "all" {
-		whereClauses = append(whereClauses, "json_extract(details, '$.notice_type') = ?")
-		args = append(args, noticeType)
+		nTypes = []string{noticeType}
 	}
-	if status != "" && status != "all" {
-		whereClauses = append(whereClauses, "status = ?")
-		args = append(args, status)
-	}
-
-	whereSQL := ""
-	if len(whereClauses) > 0 {
-		whereSQL = " WHERE " + strings.Join(whereClauses, " AND ")
-	}
-
-	var totalCount int
-	countQuery := "SELECT COUNT(1) FROM jobs" + whereSQL
-	if err := d.conn.QueryRow(countQuery, args...).Scan(&totalCount); err != nil {
-		return nil, 0, err
-	}
-
-	selectQuery := "SELECT id, hash, source_portal, status, raw_notice, details, review_notes, created_at, updated_at, published_at FROM jobs" + whereSQL + " ORDER BY created_at DESC"
-	queryArgs := append([]interface{}{}, args...)
-	if limit > 0 {
-		selectQuery += " LIMIT ? OFFSET ?"
-		queryArgs = append(queryArgs, limit, offset)
-	}
-
-	rows, err := d.conn.Query(selectQuery, queryArgs...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-
-	var jobs []models.Job
-	for rows.Next() {
-		var j models.Job
-		var rawStr, detStr string
-		var pubAt sql.NullTime
-
-		if err := rows.Scan(&j.ID, &j.Hash, &j.SourcePortal, &j.Status, &rawStr, &detStr, &j.ReviewNotes, &j.CreatedAt, &j.UpdatedAt, &pubAt); err != nil {
-			return nil, 0, err
-		}
-		if pubAt.Valid {
-			j.PublishedAt = &pubAt.Time
-		}
-		_ = json.Unmarshal([]byte(rawStr), &j.RawNotice)
-		_ = json.Unmarshal([]byte(detStr), &j.Details)
-		jobs = append(jobs, j)
-	}
-
-	return jobs, totalCount, nil
+	return d.QueryJobs(JobFilterParams{
+		Status:         status,
+		Query:          q,
+		NoticeTypes:    nTypes,
+		Categories:     cats,
+		Qualifications: quals,
+		States:         states,
+		Limit:          limit,
+		Offset:         offset,
+	})
 }
 
 func (d *DB) GetClosingSoonJobs(days int, limit int) ([]models.Job, error) {

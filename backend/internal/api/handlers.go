@@ -62,16 +62,47 @@ func parseLimit(limitStr string, defaultLimit int) int {
 	return val
 }
 
+func getQuerySlice(r *http.Request, key string) []string {
+	values := r.URL.Query()[key]
+	var result []string
+	for _, v := range values {
+		parts := strings.Split(v, ",")
+		for _, p := range parts {
+			trimmed := strings.TrimSpace(p)
+			if trimmed != "" && !strings.EqualFold(trimmed, "all") {
+				result = append(result, trimmed)
+			}
+		}
+	}
+	return result
+}
+
 // GetAllJobs - lists all jobs (draft + published) with optional filters
 func (h *Handler) GetAllJobs(w http.ResponseWriter, r *http.Request) {
 	limit := parseLimit(r.URL.Query().Get("limit"), 100)
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	noticeType := r.URL.Query().Get("type")
-	category := r.URL.Query().Get("category")
-	state := r.URL.Query().Get("state")
-	status := r.URL.Query().Get("status")
+	if offset < 0 {
+		offset = 0
+	}
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	sortBy := strings.TrimSpace(r.URL.Query().Get("sort"))
+	categories := getQuerySlice(r, "category")
+	qualifications := getQuerySlice(r, "qualification")
+	states := getQuerySlice(r, "state")
+	noticeTypes := getQuerySlice(r, "type")
 
-	jobs, total, err := h.db.GetJobs(status, noticeType, category, state, limit, offset)
+	jobs, total, err := h.db.QueryJobs(db.JobFilterParams{
+		Status:         status,
+		Query:          q,
+		NoticeTypes:    noticeTypes,
+		Categories:     categories,
+		Qualifications: qualifications,
+		States:         states,
+		SortBy:         sortBy,
+		Limit:          limit,
+		Offset:         offset,
+	})
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -89,11 +120,27 @@ func (h *Handler) GetAllJobs(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetDrafts(w http.ResponseWriter, r *http.Request) {
 	limit := parseLimit(r.URL.Query().Get("limit"), 100)
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	noticeType := r.URL.Query().Get("type")
-	category := r.URL.Query().Get("category")
-	state := r.URL.Query().Get("state")
+	if offset < 0 {
+		offset = 0
+	}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	sortBy := strings.TrimSpace(r.URL.Query().Get("sort"))
+	categories := getQuerySlice(r, "category")
+	qualifications := getQuerySlice(r, "qualification")
+	states := getQuerySlice(r, "state")
+	noticeTypes := getQuerySlice(r, "type")
 
-	jobs, total, err := h.db.GetJobs(string(models.StatusDraft), noticeType, category, state, limit, offset)
+	jobs, total, err := h.db.QueryJobs(db.JobFilterParams{
+		Status:         string(models.StatusDraft),
+		Query:          q,
+		NoticeTypes:    noticeTypes,
+		Categories:     categories,
+		Qualifications: qualifications,
+		States:         states,
+		SortBy:         sortBy,
+		Limit:          limit,
+		Offset:         offset,
+	})
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -107,15 +154,31 @@ func (h *Handler) GetDrafts(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetPublished - lists live jobs for public viewing
+// GetPublished - lists live jobs for public viewing with full DB filtering
 func (h *Handler) GetPublished(w http.ResponseWriter, r *http.Request) {
-	limit := parseLimit(r.URL.Query().Get("limit"), 100)
+	limit := parseLimit(r.URL.Query().Get("limit"), 10)
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	noticeType := r.URL.Query().Get("type")
-	category := r.URL.Query().Get("category")
-	state := r.URL.Query().Get("state")
+	if offset < 0 {
+		offset = 0
+	}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	sortBy := strings.TrimSpace(r.URL.Query().Get("sort"))
+	categories := getQuerySlice(r, "category")
+	qualifications := getQuerySlice(r, "qualification")
+	states := getQuerySlice(r, "state")
+	noticeTypes := getQuerySlice(r, "type")
 
-	jobs, total, err := h.db.GetJobs(string(models.StatusPublished), noticeType, category, state, limit, offset)
+	jobs, total, err := h.db.QueryJobs(db.JobFilterParams{
+		Status:         string(models.StatusPublished),
+		Query:          q,
+		NoticeTypes:    noticeTypes,
+		Categories:     categories,
+		Qualifications: qualifications,
+		States:         states,
+		SortBy:         sortBy,
+		Limit:          limit,
+		Offset:         offset,
+	})
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -129,19 +192,35 @@ func (h *Handler) GetPublished(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// SearchJobs - full text search with qualification and state filters
+// SearchJobs - full text search with qualification, state, category, type and sort filters
 func (h *Handler) SearchJobs(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	qual := strings.TrimSpace(r.URL.Query().Get("qualification"))
-	state := strings.TrimSpace(r.URL.Query().Get("state"))
-	category := strings.TrimSpace(r.URL.Query().Get("category"))
-	noticeType := strings.TrimSpace(r.URL.Query().Get("type"))
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
-
-	limit := parseLimit(r.URL.Query().Get("limit"), 50)
+	if status == "" {
+		status = string(models.StatusPublished)
+	}
+	limit := parseLimit(r.URL.Query().Get("limit"), 10)
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	if offset < 0 {
+		offset = 0
+	}
+	sortBy := strings.TrimSpace(r.URL.Query().Get("sort"))
+	categories := getQuerySlice(r, "category")
+	qualifications := getQuerySlice(r, "qualification")
+	states := getQuerySlice(r, "state")
+	noticeTypes := getQuerySlice(r, "type")
 
-	jobs, total, err := h.db.SearchJobs(q, qual, state, category, noticeType, status, limit, offset)
+	jobs, total, err := h.db.QueryJobs(db.JobFilterParams{
+		Status:         status,
+		Query:          q,
+		NoticeTypes:    noticeTypes,
+		Categories:     categories,
+		Qualifications: qualifications,
+		States:         states,
+		SortBy:         sortBy,
+		Limit:          limit,
+		Offset:         offset,
+	})
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
