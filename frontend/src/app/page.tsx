@@ -340,6 +340,7 @@ export default function CandidateJobsPage() {
         sortBy={sortBy}
         onSortChange={setSortBy}
         isFiltersOpen={isSidebarOpen}
+        isMobileFiltersOpen={isMobileFilterOpen}
         onSelectTrendingSearch={(t) => setSearchQuery(t)}
       />
 

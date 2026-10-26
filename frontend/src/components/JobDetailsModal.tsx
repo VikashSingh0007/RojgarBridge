@@ -36,7 +36,7 @@ function DetailSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="grid gap-2.5 py-4 sm:grid-cols-[180px_1fr] sm:gap-6">
+    <section className="grid gap-2 py-3.5 sm:grid-cols-[160px_1fr] sm:gap-4">
       <h3 className="flex items-center gap-2 text-xs font-bold text-slate-500">
         <span className="text-teal-700">{icon}</span>
         {title}
@@ -145,7 +145,7 @@ export default function JobDetailsModal({
 
             <div className="flex flex-none items-center gap-1.5">
               <span
-                className={`rounded-md border px-2 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] ${portalStyle.bg} ${portalStyle.text} ${portalStyle.border}`}
+                className={`inline-flex h-8 items-center rounded-md border px-2 text-[10px] font-extrabold uppercase tracking-[0.08em] ${portalStyle.bg} ${portalStyle.text} ${portalStyle.border}`}
               >
                 {job.source_portal || d.organization}
               </span>
@@ -175,13 +175,13 @@ export default function JobDetailsModal({
         </header>
 
         <div className="flex-1 overflow-y-auto px-5 sm:px-6">
-          <section className="grid grid-cols-2 gap-x-4 gap-y-4 border-b border-slate-200 py-5 sm:grid-cols-4">
+          <section className="grid grid-cols-2 gap-x-4 gap-y-3 border-b border-slate-200 py-4 sm:grid-cols-4">
             <div>
-              <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
                 Closing date
               </p>
               <span
-                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-extrabold ${deadline.bgClass} ${deadline.textClass} ${deadline.borderClass}`}
+                className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-extrabold ${deadline.bgClass} ${deadline.textClass} ${deadline.borderClass}`}
               >
                 <CalendarClock className="h-3.5 w-3.5" />
                 {deadlineLabel}
@@ -191,7 +191,7 @@ export default function JobDetailsModal({
               <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
                 Vacancies
               </p>
-              <p className="text-sm font-extrabold text-slate-900">
+              <p className="flex min-h-8 items-center text-sm font-extrabold text-slate-900">
                 {d.total_vacancies > 0 ? d.total_vacancies.toLocaleString() : "Not specified"}
               </p>
             </div>
@@ -199,7 +199,7 @@ export default function JobDetailsModal({
               <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
                 Age limit
               </p>
-              <p className="text-sm font-extrabold text-slate-900">
+              <p className="flex min-h-8 items-center text-sm font-extrabold text-slate-900">
                 {d.min_age && d.max_age ? `${d.min_age}–${d.max_age} years` : "Not specified"}
               </p>
             </div>
@@ -207,7 +207,7 @@ export default function JobDetailsModal({
               <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
                 Exam date
               </p>
-              <p className="text-sm font-extrabold text-slate-900">
+              <p className="flex min-h-8 items-center text-sm font-extrabold text-slate-900">
                 {d.exam_date || "Not announced"}
               </p>
             </div>
@@ -253,7 +253,10 @@ export default function JobDetailsModal({
             ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 py-4 text-xs">
+        </div>
+
+        <footer className="flex flex-none flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-5 py-3 sm:px-6">
+          <div className="flex items-center gap-1 text-xs">
             <button
               onClick={handleShareWhatsApp}
               className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
@@ -269,34 +272,34 @@ export default function JobDetailsModal({
               {copied ? "Link copied" : "Copy link"}
             </button>
           </div>
-        </div>
 
-        <footer className="flex flex-none items-center justify-end gap-2 border-t border-slate-200 bg-white px-5 py-3 sm:px-6">
-          {hasSeparateNotice ? (
-            <a
-              href={noticeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100"
-            >
-              View official notice
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          ) : null}
+          <div className="ml-auto flex items-center gap-2">
+            {hasSeparateNotice ? (
+              <a
+                href={noticeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100"
+              >
+                View official notice
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            ) : null}
 
-          {primaryUrl ? (
-            <a
-              href={primaryUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-5 py-2.5 text-xs font-extrabold text-white shadow-sm transition-colors hover:bg-slate-800 sm:text-sm"
-            >
-              {d.official_apply_url ? "Apply on official website" : "Open official notification"}
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          ) : (
-            <span className="text-xs font-semibold text-slate-500">Official link unavailable</span>
-          )}
+            {primaryUrl ? (
+              <a
+                href={primaryUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-xs font-extrabold text-white shadow-sm transition-colors hover:bg-slate-800 sm:text-sm"
+              >
+                {d.official_apply_url ? "Apply on official website" : "Open official notification"}
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            ) : (
+              <span className="text-xs font-semibold text-slate-500">Official link unavailable</span>
+            )}
+          </div>
         </footer>
       </aside>
     </div>

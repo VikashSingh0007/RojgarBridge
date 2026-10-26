@@ -14,6 +14,7 @@ interface SearchAndCategoryBarProps {
   onSortChange: (sort: "latest" | "deadline" | "posts") => void;
   onSelectTrendingSearch?: (query: string) => void;
   isFiltersOpen?: boolean;
+  isMobileFiltersOpen?: boolean;
 }
 
 const SUGGESTIONS = [
@@ -40,15 +41,25 @@ const SORT_OPTIONS = [
   { value: "posts", label: "Highest Posts" },
 ] as const;
 
-export default function SearchAndCategoryBar({ searchQuery, onSearchChange, selectedCategoryPills, onToggleCategoryPill, activeFilterCount, onToggleFiltersModal, sortBy, onSortChange, onSelectTrendingSearch }: SearchAndCategoryBarProps) {
+export default function SearchAndCategoryBar({ searchQuery, onSearchChange, selectedCategoryPills, onToggleCategoryPill, activeFilterCount, onToggleFiltersModal, sortBy, onSortChange, onSelectTrendingSearch, isFiltersOpen = false, isMobileFiltersOpen = false }: SearchAndCategoryBarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sortRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [isDesktopViewport, setIsDesktopViewport] = useState(true);
+  const filtersAreOpen = isDesktopViewport ? isFiltersOpen : isMobileFiltersOpen;
   const filteredSuggestions = searchQuery.trim()
     ? SUGGESTIONS.filter((item) => `${item.text} ${item.tag}`.toLowerCase().includes(searchQuery.toLowerCase()))
     : SUGGESTIONS;
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1024px)");
+    const updateViewport = () => setIsDesktopViewport(media.matches);
+    updateViewport();
+    media.addEventListener("change", updateViewport);
+    return () => media.removeEventListener("change", updateViewport);
+  }, []);
 
   useEffect(() => {
     const close = (event: MouseEvent) => {
@@ -102,7 +113,6 @@ export default function SearchAndCategoryBar({ searchQuery, onSearchChange, sele
             aria-label="Search government opportunities"
           />
           {searchQuery && <button onClick={() => onSearchChange("")} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Clear search"><X className="h-4 w-4" /></button>}
-          <button onClick={() => setShowSuggestions(false)} className="hidden h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-teal-700 sm:inline-flex"><Search className="h-4 w-4" />Search</button>
         </div>
 
         {showSuggestions && (
@@ -133,7 +143,11 @@ export default function SearchAndCategoryBar({ searchQuery, onSearchChange, sele
             </button>
           );
         })}
-        <button onClick={onToggleFiltersModal} className="inline-flex min-h-9 flex-none items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-teal-300 hover:text-teal-800">
+        <button
+          onClick={onToggleFiltersModal}
+          aria-pressed={filtersAreOpen}
+          className={`inline-flex min-h-9 flex-none items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${filtersAreOpen ? "border-teal-300 bg-teal-50 text-teal-800" : "border-slate-200 bg-white text-slate-700 hover:border-teal-300 hover:text-teal-800"}`}
+        >
           <Filter className="h-3.5 w-3.5" />More filters{activeFilterCount > 0 && <span className="rounded-full bg-teal-700 px-1.5 text-[10px] font-extrabold text-white">{activeFilterCount}</span>}
         </button>
         <div ref={sortRef} className="relative ml-auto flex-none">
