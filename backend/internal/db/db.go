@@ -41,7 +41,32 @@ func InitDB(dbPath string) (*DB, error) {
 		return nil, fmt.Errorf("migration failed: %w", err)
 	}
 
+	if err := db.EnsurePublishedJobs(); err != nil {
+		return nil, fmt.Errorf("failed ensuring published jobs: %w", err)
+	}
+
 	return db, nil
+}
+
+// EnsurePublishedJobs ensures that in production or local, there are always published jobs available
+func (d *DB) EnsurePublishedJobs() error {
+	var pubCount int
+	_ = d.conn.QueryRow("SELECT COUNT(1) FROM jobs WHERE status = 'published'").Scan(&pubCount)
+	if pubCount == 0 {
+		var draftCount int
+		_ = d.conn.QueryRow("SELECT COUNT(1) FROM jobs WHERE status = 'draft'").Scan(&draftCount)
+		if draftCount > 0 {
+			// Auto-publish existing draft notifications so production is instantly active
+			_, err := d.conn.Exec("UPDATE jobs SET status = 'published', published_at = CURRENT_TIMESTAMP WHERE status = 'draft'")
+			if err != nil {
+				return err
+			}
+		} else {
+			// Database is completely empty, seed initial verified government notices
+			return d.SeedInitialVerifiedJobs()
+		}
+	}
+	return nil
 }
 
 func (d *DB) migrate() error {
@@ -288,7 +313,7 @@ func (d *DB) QueryJobs(params JobFilterParams) ([]models.Job, int, error) {
 	}
 	defer rows.Close()
 
-	var jobs []models.Job
+	jobs := make([]models.Job, 0)
 	for rows.Next() {
 		var j models.Job
 		var rawStr, detStr string
@@ -416,7 +441,7 @@ func (d *DB) GetClosingSoonJobs(days int, limit int) ([]models.Job, error) {
 	}
 	defer rows.Close()
 
-	var jobs []models.Job
+	jobs := make([]models.Job, 0)
 	for rows.Next() {
 		var j models.Job
 		var rawStr, detStr string
@@ -523,7 +548,7 @@ func (d *DB) GetRecentPublished(limit int) ([]models.Job, error) {
 	}
 	defer rows.Close()
 
-	var jobs []models.Job
+	jobs := make([]models.Job, 0)
 	for rows.Next() {
 		var j models.Job
 		var rawStr, detStr string
@@ -628,7 +653,7 @@ func (d *DB) GetJobsForReExtraction() ([]models.Job, error) {
 	}
 	defer rows.Close()
 
-	var jobs []models.Job
+	jobs := make([]models.Job, 0)
 	for rows.Next() {
 		var j models.Job
 		var rawStr, detStr string
