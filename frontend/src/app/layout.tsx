@@ -13,7 +13,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "RojgarBridge | Verified Government Jobs and Exam Updates",
+  title: "RojgarBridge",
   description: "Find verified government job notifications, admit cards and results from UPSC, SSC, Railways, Banking and State PSCs on RojgarBridge.",
 };
 

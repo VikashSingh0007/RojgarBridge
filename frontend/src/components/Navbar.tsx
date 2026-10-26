@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bookmark, BriefcaseBusiness, FileCheck2, Globe2, Languages, LayoutDashboard, Menu, Trophy, X } from "lucide-react";
+import { Bookmark, BriefcaseBusiness, FileCheck2, Globe2, LayoutDashboard, Menu, Trophy, X } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
 
 export default function Navbar() {
@@ -42,9 +42,6 @@ export default function Navbar() {
 
         <div className="hidden items-center gap-2 sm:flex">
           <ThemeToggle compact />
-          <button className="inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-950" aria-label="Change language">
-            <Languages className="h-4 w-4" /><span className="hidden md:inline">English</span>
-          </button>
           <a href="/#saved-jobs" className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">
             <Bookmark className="h-4 w-4" />Saved jobs
           </a>

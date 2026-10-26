@@ -40,6 +40,31 @@ select {
   -webkit-tap-highlight-color: transparent;
 }
 
+@keyframes job-drawer-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes job-drawer-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.job-drawer-enter {
+  animation: job-drawer-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.job-drawer-backdrop {
+  animation: job-drawer-backdrop-in 160ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-drawer-enter,
+  .job-drawer-backdrop {
+    animation: none;
+  }
+}
+
 /* Teal is the restrained product accent; blue utilities are normalized here
    so legacy public and admin surfaces share the same visual language. */
 .bg-blue-50,

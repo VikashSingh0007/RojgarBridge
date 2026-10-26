@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { Bookmark, Search } from "lucide-react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { LoaderCircle, Search } from "lucide-react";
 import { JobItem } from "@/types";
 import { fetchPublishedJobs } from "@/lib/api";
 import { INITIAL_PUBLISHED_JOBS } from "@/lib/mockData";
@@ -10,7 +10,6 @@ import SearchAndCategoryBar from "@/components/SearchAndCategoryBar";
 import SidebarFilters from "@/components/SidebarFilters";
 import JobTableView from "@/components/JobTableView";
 import JobMobileCards from "@/components/JobMobileCards";
-import Pagination from "@/components/Pagination";
 import JobDetailsModal from "@/components/JobDetailsModal";
 
 export default function CandidateJobsPage() {
@@ -18,7 +17,7 @@ export default function CandidateJobsPage() {
   const [totalCount, setTotalCount] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [selectedCategoryPill, setSelectedCategoryPill] = useState("All Jobs");
+  const [selectedCategoryPills, setSelectedCategoryPills] = useState<string[]>([]);
 
   // Sidebar Filters State
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -34,12 +33,23 @@ export default function CandidateJobsPage() {
   // Toast feedback state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Pagination state
+  // Incremental loading state
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 12;
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const loadCooldownRef = useRef(false);
+  const loadCooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadMoreStateRef = useRef({ hasMoreJobs: false, isLoading: true });
+  const checkForMoreRef = useRef<() => void>(() => undefined);
 
   // Selected Job for Detail Modal
   const [selectedJob, setSelectedJob] = useState<JobItem | null>(null);
+  const [lastSelectedJobId, setLastSelectedJobId] = useState<number | null>(null);
+
+  const handleSelectJob = (job: JobItem) => {
+    setSelectedJob(job);
+    setLastSelectedJobId(job.id);
+  };
 
   // Mobile & Desktop Filters State
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
@@ -83,12 +93,14 @@ export default function CandidateJobsPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Reset page to 1 whenever any filter or search changes
+  // Reset the feed whenever any filter or search changes.
   useEffect(() => {
+    loadCooldownRef.current = false;
+    if (loadCooldownTimerRef.current) clearTimeout(loadCooldownTimerRef.current);
     setCurrentPage(1);
   }, [
     debouncedQuery,
-    selectedCategoryPill,
+    selectedCategoryPills,
     selectedCategories,
     selectedQualifications,
     selectedStates,
@@ -108,26 +120,25 @@ export default function CandidateJobsPage() {
         const quals = [...selectedQualifications];
         const types = [...selectedJobTypes];
 
-        if (selectedCategoryPill !== "All Jobs") {
-          const pill = selectedCategoryPill;
+        selectedCategoryPills.forEach((pill) => {
           if (
             pill === "10th Pass" ||
             pill === "12th Pass" ||
             pill === "Graduate" ||
             pill === "Engineering"
           ) {
-            quals.push(pill);
+            if (!quals.includes(pill)) quals.push(pill);
           } else if (
             pill === "Recruitment" ||
             pill === "Admit Card" ||
             pill === "Result" ||
             pill === "Answer Key"
           ) {
-            types.push(pill);
+            if (!types.includes(pill)) types.push(pill);
           } else {
-            cats.push(pill);
+            if (!cats.includes(pill)) cats.push(pill);
           }
-        }
+        });
 
         const res = await fetchPublishedJobs({
           q: debouncedQuery.trim() || undefined,
@@ -165,7 +176,11 @@ export default function CandidateJobsPage() {
             count = INITIAL_PUBLISHED_JOBS.length;
           }
 
-          setJobs(list);
+          setJobs((current) => {
+            if (currentPage === 1) return list;
+            const existingIds = new Set(current.map((item) => item.id));
+            return [...current, ...list.filter((item) => !existingIds.has(item.id))];
+          });
           setTotalCount(count);
         }
       } catch (err) {
@@ -176,12 +191,27 @@ export default function CandidateJobsPage() {
             const currentSaved = getSavedJobIds();
             list = list.filter((j) => currentSaved.includes(j.id));
           }
-          setJobs(list.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE));
+          const pageJobs = list.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+          setJobs((current) => {
+            if (currentPage === 1) return pageJobs;
+            const existingIds = new Set(current.map((item) => item.id));
+            return [...current, ...pageJobs.filter((item) => !existingIds.has(item.id))];
+          });
           setTotalCount(list.length);
         }
       } finally {
         if (!cancelled) {
           setIsLoading(false);
+          if (currentPage > 1) {
+            if (loadCooldownTimerRef.current) clearTimeout(loadCooldownTimerRef.current);
+            loadCooldownTimerRef.current = setTimeout(() => {
+              loadCooldownRef.current = false;
+              // The user may have reached the bottom while the cooldown was
+              // active. Re-check once on unlock so another scroll gesture is
+              // not required to start the next batch.
+              window.requestAnimationFrame(() => checkForMoreRef.current());
+            }, 1000);
+          }
         }
       }
     }
@@ -193,7 +223,7 @@ export default function CandidateJobsPage() {
     };
   }, [
     debouncedQuery,
-    selectedCategoryPill,
+    selectedCategoryPills,
     selectedCategories,
     selectedQualifications,
     selectedStates,
@@ -203,9 +233,62 @@ export default function CandidateJobsPage() {
     showOnlySaved,
   ]);
 
+  const hasMoreJobs = !showOnlySaved && jobs.length < totalCount;
+
+  useEffect(() => {
+    loadMoreStateRef.current = { hasMoreJobs, isLoading };
+  }, [hasMoreJobs, isLoading]);
+
+  // Check the sentinel's distance from the viewport on every scroll source.
+  // The page can contain nested scrolling surfaces, so listening in capture
+  // mode is more dependable here than a viewport-only IntersectionObserver.
+  useEffect(() => {
+    let frameId: number | null = null;
+
+    const checkForMore = () => {
+      frameId = null;
+      const sentinel = loadMoreRef.current;
+      const { hasMoreJobs: canLoadMore, isLoading: loading } = loadMoreStateRef.current;
+      if (!sentinel || !canLoadMore || loading || loadCooldownRef.current) return;
+
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+      const distanceFromViewport = sentinel.getBoundingClientRect().top - viewportHeight;
+      if (distanceFromViewport > 180) return;
+
+      loadCooldownRef.current = true;
+      setCurrentPage((page) => page + 1);
+    };
+
+    checkForMoreRef.current = checkForMore;
+
+    const scheduleCheck = () => {
+      if (frameId !== null) return;
+      frameId = window.requestAnimationFrame(checkForMore);
+    };
+
+    document.addEventListener("scroll", scheduleCheck, true);
+    window.addEventListener("scroll", scheduleCheck, { passive: true });
+    window.addEventListener("resize", scheduleCheck);
+    scheduleCheck();
+
+    return () => {
+      checkForMoreRef.current = () => undefined;
+      document.removeEventListener("scroll", scheduleCheck, true);
+      window.removeEventListener("scroll", scheduleCheck);
+      window.removeEventListener("resize", scheduleCheck);
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (loadCooldownTimerRef.current) clearTimeout(loadCooldownTimerRef.current);
+    };
+  }, []);
+
   // Compute active filters count
   const activeFilterCount =
-    (selectedCategoryPill !== "All Jobs" ? 1 : 0) +
+    selectedCategoryPills.length +
     selectedCategories.length +
     selectedQualifications.length +
     selectedStates.length +
@@ -219,13 +302,11 @@ export default function CandidateJobsPage() {
     setSelectedQualifications([]);
     setSelectedStates([]);
     setSelectedJobTypes([]);
-    setSelectedCategoryPill("All Jobs");
+    setSelectedCategoryPills([]);
     setSearchQuery("");
     setShowOnlySaved(false);
     setCurrentPage(1);
   };
-
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE) || 1;
 
   return (
     <div className="space-y-4">
@@ -242,134 +323,28 @@ export default function CandidateJobsPage() {
       <SearchAndCategoryBar
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        selectedCategoryPill={selectedCategoryPill}
-        onSelectCategoryPill={setSelectedCategoryPill}
+        selectedCategoryPills={selectedCategoryPills}
+        onToggleCategoryPill={(pill) => {
+          if (pill === "All Jobs") {
+            setSelectedCategoryPills([]);
+            return;
+          }
+          setSelectedCategoryPills((current) =>
+            current.includes(pill)
+              ? current.filter((item) => item !== pill)
+              : [...current, pill]
+          );
+        }}
         activeFilterCount={activeFilterCount}
         onToggleFiltersModal={handleToggleFilters}
+        sortBy={sortBy}
+        onSortChange={setSortBy}
         isFiltersOpen={isSidebarOpen}
         onSelectTrendingSearch={(t) => setSearchQuery(t)}
       />
 
-      {/* Active Filter Chips Bar (Student-friendly non-technical wording) */}
-      {activeFilterCount > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 bg-slate-100/80 p-2.5 rounded-xl border border-slate-200 text-xs">
-          <span className="font-bold text-slate-600">Applied Filters:</span>
-
-          {showOnlySaved && (
-            <span className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-300 text-amber-800 px-2 py-0.5 rounded-full font-bold shadow-2xs">
-              Shortlisted jobs only
-              <button
-                onClick={() => setShowOnlySaved(false)}
-                className="hover:text-red-600 font-bold ml-0.5"
-              >
-                ✕
-              </button>
-            </span>
-          )}
-
-          {searchQuery.trim() && (
-            <span className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-2 py-0.5 rounded-full font-medium shadow-2xs">
-              Search: &quot;{searchQuery}&quot;
-              <button
-                onClick={() => setSearchQuery("")}
-                className="hover:text-red-600 font-bold ml-0.5"
-              >
-                ✕
-              </button>
-            </span>
-          )}
-
-          {selectedCategoryPill !== "All Jobs" && (
-            <span className="inline-flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-700 px-2 py-0.5 rounded-full font-bold shadow-2xs">
-              {selectedCategoryPill}
-              <button
-                onClick={() => setSelectedCategoryPill("All Jobs")}
-                className="hover:text-red-600 font-bold ml-0.5"
-              >
-                ✕
-              </button>
-            </span>
-          )}
-
-          {selectedCategories.map((cat) => (
-            <span
-              key={cat}
-              className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-2 py-0.5 rounded-full font-medium shadow-2xs"
-            >
-              Sector: {cat}
-              <button
-                onClick={() =>
-                  setSelectedCategories((prev) => prev.filter((x) => x !== cat))
-                }
-                className="hover:text-red-600 font-bold ml-0.5"
-              >
-                ✕
-              </button>
-            </span>
-          ))}
-
-          {selectedJobTypes.map((type) => (
-            <span
-              key={type}
-              className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-2 py-0.5 rounded-full font-medium shadow-2xs"
-            >
-              Type: {type}
-              <button
-                onClick={() =>
-                  setSelectedJobTypes((prev) => prev.filter((x) => x !== type))
-                }
-                className="hover:text-red-600 font-bold ml-0.5"
-              >
-                ✕
-              </button>
-            </span>
-          ))}
-
-          {selectedQualifications.map((qual) => (
-            <span
-              key={qual}
-              className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-2 py-0.5 rounded-full font-medium shadow-2xs"
-            >
-              Qualification: {qual}
-              <button
-                onClick={() =>
-                  setSelectedQualifications((prev) => prev.filter((x) => x !== qual))
-                }
-                className="hover:text-red-600 font-bold ml-0.5"
-              >
-                ✕
-              </button>
-            </span>
-          ))}
-
-          {selectedStates.map((st) => (
-            <span
-              key={st}
-              className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-2 py-0.5 rounded-full font-medium shadow-2xs"
-            >
-              State: {st}
-              <button
-                onClick={() =>
-                  setSelectedStates((prev) => prev.filter((x) => x !== st))
-                }
-                className="hover:text-red-600 font-bold ml-0.5"
-              >
-                ✕
-              </button>
-            </span>
-          ))}
-
-          <button
-            onClick={handleClearAll}
-            className="text-xs font-bold text-red-600 hover:text-red-700 hover:underline ml-auto"
-          >
-            Clear All ({activeFilterCount})
-          </button>
-        </div>
-      )}
-
       {/* Main 2-Column Content Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div id="jobs" className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Sidebar Filter (Desktop) */}
         {isSidebarOpen && (
           <aside className="hidden lg:block lg:col-span-3 sticky top-28 transition-all">
@@ -391,62 +366,6 @@ export default function CandidateJobsPage() {
 
         {/* Right Main Content (expands to 12 cols when sidebar is closed) */}
         <div className={`${isSidebarOpen ? "lg:col-span-9" : "lg:col-span-12"} space-y-3.5 transition-all`}>
-          <div id="jobs" className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              {!isSidebarOpen && (
-                <button
-                  type="button"
-                  onClick={() => setIsSidebarOpen(true)}
-                  className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl text-xs font-bold border border-blue-200 shadow-2xs transition-all hover:scale-102"
-                  title="Open filters sidebar"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                  </svg>
-                  <span>Show Filters</span>
-                  {activeFilterCount > 0 && (
-                    <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold">
-                      {activeFilterCount}
-                    </span>
-                  )}
-                </button>
-              )}
-              <div>
-                <h2 className="flex items-center gap-2 text-base font-extrabold tracking-tight text-slate-950 sm:text-lg">
-                  <span>Latest government opportunities</span>
-                  {isLoading && (
-                    <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
-                  )}
-                </h2>
-                <p className="text-sm text-slate-500">
-                  Showing {jobs.length} of <strong className="text-slate-800">{totalCount}</strong> official notices
-                </p>
-              </div>
-            </div>
-
-            <div id="saved-jobs" className="flex items-center gap-2 self-end text-sm sm:self-center">
-              <button
-                onClick={() => setShowOnlySaved(!showOnlySaved)}
-                className={`inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 font-semibold transition-colors ${showOnlySaved ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
-              >
-                <Bookmark className={`h-4 w-4 ${showOnlySaved ? "fill-current" : ""}`} />
-                <span className="hidden lg:inline">Saved</span> ({savedJobIds.length})
-              </button>
-              <div className="flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3">
-                <span className="font-medium text-slate-500">Sort by</span>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                  className="cursor-pointer bg-transparent font-bold text-slate-800 focus:outline-none"
-                >
-                  <option value="latest">Latest First</option>
-                  <option value="deadline">Closing Soon</option>
-                  <option value="posts">Highest Posts</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
           {/* Main Listings Display */}
           {isLoading && jobs.length === 0 ? (
             <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-3">
@@ -462,8 +381,9 @@ export default function CandidateJobsPage() {
                 <JobTableView
                   jobs={jobs}
                   savedJobIds={savedJobIds}
+                  selectedJobId={lastSelectedJobId}
                   onToggleBookmark={handleToggleBookmark}
-                  onSelectJob={(job) => setSelectedJob(job)}
+                  onSelectJob={handleSelectJob}
                 />
               </div>
 
@@ -472,8 +392,9 @@ export default function CandidateJobsPage() {
                 <JobMobileCards
                   jobs={jobs}
                   savedJobIds={savedJobIds}
+                  selectedJobId={lastSelectedJobId}
                   onToggleBookmark={handleToggleBookmark}
-                  onSelectJob={(job) => setSelectedJob(job)}
+                  onSelectJob={handleSelectJob}
                 />
               </div>
             </>
@@ -517,7 +438,7 @@ export default function CandidateJobsPage() {
                   ISRO
                 </button>
                 <button
-                  onClick={() => setSelectedCategoryPill("Graduate")}
+                  onClick={() => setSelectedCategoryPills((current) => current.includes("Graduate") ? current : [...current, "Graduate"])}
                   className="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-blue-50 text-xs font-semibold text-slate-700"
                 >
                   Graduate Jobs
@@ -533,15 +454,25 @@ export default function CandidateJobsPage() {
             </div>
           )}
 
-          {/* Pagination */}
-          {!showOnlySaved && (
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={setCurrentPage}
-              totalItems={totalCount}
-              pageSize={PAGE_SIZE}
-            />
+          {!showOnlySaved && jobs.length > 0 && (
+            <div
+              ref={loadMoreRef}
+              className="flex min-h-16 items-center justify-center border-t border-slate-200 py-4 text-xs text-slate-500"
+              aria-live="polite"
+            >
+              {hasMoreJobs ? (
+                isLoading ? (
+                  <span className="inline-flex items-center gap-2 font-semibold text-slate-600">
+                    <LoaderCircle className="h-4 w-4 animate-spin text-teal-700" />
+                    Loading more opportunities…
+                  </span>
+                ) : (
+                  <span>Scroll to load more</span>
+                )
+              ) : (
+                <span>All {totalCount} opportunities loaded</span>
+              )}
+            </div>
           )}
         </div>
       </div>

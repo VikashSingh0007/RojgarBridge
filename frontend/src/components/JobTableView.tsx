@@ -1,17 +1,18 @@
 "use client";
 
-import { Bookmark, GraduationCap, MapPin, Users } from "lucide-react";
+import { Bookmark, CalendarClock, GraduationCap, MapPin, Users } from "lucide-react";
 import { JobItem } from "@/types";
 import { getCompactDeadlineLabel, getDeadlineStatus, getShortQualification } from "@/lib/formatters";
 
 interface JobTableViewProps {
   jobs: JobItem[];
   savedJobIds: number[];
+  selectedJobId?: number | null;
   onToggleBookmark: (id: number) => void;
   onSelectJob: (job: JobItem) => void;
 }
 
-export default function JobTableView({ jobs, savedJobIds, onToggleBookmark, onSelectJob }: JobTableViewProps) {
+export default function JobTableView({ jobs, savedJobIds, selectedJobId, onToggleBookmark, onSelectJob }: JobTableViewProps) {
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="divide-y divide-slate-100">
@@ -19,21 +20,17 @@ export default function JobTableView({ jobs, savedJobIds, onToggleBookmark, onSe
           const d = job.details;
           const deadline = getDeadlineStatus(d.application_end);
           const isSaved = savedJobIds.includes(job.id);
+          const isSelected = selectedJobId === job.id;
           const location = d.state && d.state.toLowerCase() !== "all india" ? d.state : null;
 
           return (
             <article
               key={job.id}
               onClick={() => onSelectJob(job)}
-              className="group grid cursor-pointer gap-4 px-5 py-4 transition-colors hover:bg-slate-50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+              className={`group grid cursor-pointer gap-4 px-5 py-4 transition-colors sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${isSelected ? "shadow-[inset_3px_0_0_#0f766e] hover:bg-slate-50" : "hover:bg-slate-50"}`}
+              aria-current={isSelected ? "true" : undefined}
             >
               <div className="min-w-0">
-                <div className="mb-1.5 flex items-center gap-2">
-                  <span className="rounded-md bg-teal-50 px-2 py-1 text-xs font-bold text-teal-800 ring-1 ring-inset ring-teal-200">
-                    {job.source_portal || d.organization}
-                  </span>
-                </div>
-
                 <h3 className="text-base font-bold leading-snug text-slate-950 transition-colors group-hover:text-teal-800 sm:text-lg">
                   {d.title}
                 </h3>
@@ -56,7 +53,11 @@ export default function JobTableView({ jobs, savedJobIds, onToggleBookmark, onSe
               </div>
 
               <div className="flex items-center justify-between gap-3 sm:justify-end">
-                <span className={`whitespace-nowrap text-sm font-bold ${deadline.textClass}`}>
+                <span className="whitespace-nowrap text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  {job.source_portal || d.organization}
+                </span>
+                <span className={`inline-flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-sm font-extrabold ${deadline.bgClass} ${deadline.textClass} ${deadline.borderClass}`}>
+                  <CalendarClock className="h-4 w-4" aria-hidden="true" />
                   {getCompactDeadlineLabel(deadline.label)}
                 </span>
                 <button

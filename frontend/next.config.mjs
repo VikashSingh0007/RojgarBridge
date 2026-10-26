@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Keep `next dev` and `next build` from overwriting each other's output.
+  // This prevents production verification builds from breaking dev-server HMR.
+  distDir: process.env.NODE_ENV === "development" ? ".next-dev" : ".next",
   async rewrites() {
     const backendUrl =
       process.env.BACKEND_URL ||

@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUpRight, BadgeCheck, Building2, Filter, Landmark, Search, ShieldCheck, TrainFront, University, X } from "lucide-react";
+import { ArrowUpRight, BadgeCheck, Building2, Check, ChevronDown, Filter, Landmark, Search, ShieldCheck, TrainFront, University, X } from "lucide-react";
 
 interface SearchAndCategoryBarProps {
   searchQuery: string;
   onSearchChange: (q: string) => void;
-  selectedCategoryPill: string;
-  onSelectCategoryPill: (pill: string) => void;
+  selectedCategoryPills: string[];
+  onToggleCategoryPill: (pill: string) => void;
   activeFilterCount: number;
   onToggleFiltersModal: () => void;
+  sortBy: "latest" | "deadline" | "posts";
+  onSortChange: (sort: "latest" | "deadline" | "posts") => void;
   onSelectTrendingSearch?: (query: string) => void;
   isFiltersOpen?: boolean;
 }
@@ -32,10 +34,18 @@ const CATEGORIES = [
   { label: "State Govt", icon: ShieldCheck },
 ];
 
-export default function SearchAndCategoryBar({ searchQuery, onSearchChange, selectedCategoryPill, onSelectCategoryPill, activeFilterCount, onToggleFiltersModal, onSelectTrendingSearch }: SearchAndCategoryBarProps) {
+const SORT_OPTIONS = [
+  { value: "latest", label: "Latest First" },
+  { value: "deadline", label: "Closing Soon" },
+  { value: "posts", label: "Highest Posts" },
+] as const;
+
+export default function SearchAndCategoryBar({ searchQuery, onSearchChange, selectedCategoryPills, onToggleCategoryPill, activeFilterCount, onToggleFiltersModal, sortBy, onSortChange, onSelectTrendingSearch }: SearchAndCategoryBarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const sortRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showSortMenu, setShowSortMenu] = useState(false);
   const filteredSuggestions = searchQuery.trim()
     ? SUGGESTIONS.filter((item) => `${item.text} ${item.tag}`.toLowerCase().includes(searchQuery.toLowerCase()))
     : SUGGESTIONS;
@@ -43,14 +53,26 @@ export default function SearchAndCategoryBar({ searchQuery, onSearchChange, sele
   useEffect(() => {
     const close = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) setShowSuggestions(false);
+      if (sortRef.current && !sortRef.current.contains(event.target as Node)) setShowSortMenu(false);
+    };
+    const closeOnScroll = () => {
+      setShowSuggestions(false);
+      setShowSortMenu(false);
     };
     document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    document.addEventListener("scroll", closeOnScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("scroll", closeOnScroll, true);
+    };
   }, []);
 
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setShowSuggestions(false);
+      if (event.key === "Escape") {
+        setShowSuggestions(false);
+        setShowSortMenu(false);
+      }
       if (event.key === "/" && document.activeElement !== inputRef.current) {
         event.preventDefault();
         inputRef.current?.focus();
@@ -68,7 +90,7 @@ export default function SearchAndCategoryBar({ searchQuery, onSearchChange, sele
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
       <div ref={containerRef} className="relative">
-        <div className="flex h-14 items-center rounded-xl border border-slate-300 bg-slate-50/70 p-1 transition-all focus-within:border-teal-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-teal-100">
+        <div className="flex h-14 items-center rounded-xl border border-slate-300 bg-slate-50/70 p-1 transition-colors focus-within:border-teal-600 focus-within:bg-white">
           <Search className="ml-3 h-5 w-5 flex-none text-slate-400" />
           <input
             ref={inputRef}
@@ -76,7 +98,7 @@ export default function SearchAndCategoryBar({ searchQuery, onSearchChange, sele
             onChange={(event) => { onSearchChange(event.target.value); setShowSuggestions(true); }}
             onFocus={() => setShowSuggestions(true)}
             placeholder="Search job title, exam, department or qualification"
-            className="min-w-0 flex-1 bg-transparent px-3 text-sm font-medium text-slate-950 outline-none placeholder:font-normal placeholder:text-slate-400 sm:text-base"
+            className="min-w-0 flex-1 bg-transparent px-3 text-sm font-medium text-slate-950 outline-none focus-visible:outline-none placeholder:font-normal placeholder:text-slate-400 sm:text-base"
             aria-label="Search government opportunities"
           />
           {searchQuery && <button onClick={() => onSearchChange("")} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Clear search"><X className="h-4 w-4" /></button>}
@@ -96,18 +118,65 @@ export default function SearchAndCategoryBar({ searchQuery, onSearchChange, sele
         )}
       </div>
 
-      <div className="mt-2.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+      <div className="mt-2.5 flex min-w-0 flex-wrap items-center gap-1.5">
         {CATEGORIES.map(({ label, icon: Icon }) => {
-          const selected = selectedCategoryPill === label;
+          const selected = label === "All Jobs" ? selectedCategoryPills.length === 0 : selectedCategoryPills.includes(label);
           return (
-            <button key={label} onClick={() => onSelectCategoryPill(label)} className={`inline-flex min-h-9 flex-none items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${selected ? "border-teal-200 bg-teal-50 text-teal-800" : "border-transparent bg-slate-50 text-slate-600 hover:border-slate-200 hover:bg-white hover:text-slate-950"}`}>
+            <button
+              key={label}
+              onClick={() => onToggleCategoryPill(label)}
+              aria-pressed={selected}
+              className={`inline-flex min-h-9 flex-none items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${selected ? "border-teal-300 bg-teal-50 text-teal-800" : "border-transparent bg-slate-50 text-slate-600 hover:border-slate-200 hover:bg-white hover:text-slate-950"}`}
+            >
               <Icon className="h-3.5 w-3.5" />{label}
+              {selected && label !== "All Jobs" && <X className="ml-0.5 h-3.5 w-3.5" aria-hidden="true" />}
             </button>
           );
         })}
         <button onClick={onToggleFiltersModal} className="inline-flex min-h-9 flex-none items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-teal-300 hover:text-teal-800">
           <Filter className="h-3.5 w-3.5" />More filters{activeFilterCount > 0 && <span className="rounded-full bg-teal-700 px-1.5 text-[10px] font-extrabold text-white">{activeFilterCount}</span>}
         </button>
+        <div ref={sortRef} className="relative ml-auto flex-none">
+          <button
+            type="button"
+            onClick={() => {
+              setShowSuggestions(false);
+              setShowSortMenu((open) => !open);
+            }}
+            className={`inline-flex min-h-9 items-center gap-2 rounded-lg border bg-white px-3 text-xs transition-colors ${showSortMenu ? "border-slate-400 text-slate-950" : "border-slate-200 text-slate-700 hover:border-slate-300"}`}
+            aria-haspopup="listbox"
+            aria-expanded={showSortMenu}
+            aria-label="Sort jobs"
+          >
+            <span className="hidden font-medium text-slate-500 sm:inline">Sort by</span>
+            <span className="font-bold">{SORT_OPTIONS.find((option) => option.value === sortBy)?.label}</span>
+            <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${showSortMenu ? "rotate-180" : ""}`} />
+          </button>
+
+          {showSortMenu && (
+            <div className="absolute right-0 top-full z-50 mt-1.5 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-lg shadow-slate-900/10" role="listbox" aria-label="Sort jobs">
+              {SORT_OPTIONS.map((option) => {
+                const selected = option.value === sortBy;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                      onSortChange(option.value);
+                      setShowSortMenu(false);
+                    }}
+                    className={`flex min-h-9 w-full items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-left text-xs font-semibold transition-colors ${selected ? "bg-slate-100 text-slate-950" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`}
+                    role="option"
+                    aria-selected={selected}
+                  >
+                    <span>{option.label}</span>
+                    {selected && <Check className="h-3.5 w-3.5 text-teal-700" aria-hidden="true" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );
