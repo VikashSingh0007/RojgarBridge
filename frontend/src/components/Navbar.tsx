@@ -22,30 +22,59 @@ export default function Navbar({ onSearchClick }: NavbarProps) {
   ];
 
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
+    <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40 shadow-2xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20">
+        <div className="flex items-center justify-between h-16 sm:h-18">
           {/* Logo Brand */}
-          <Link href="/" className="flex items-center gap-3">
-            {/* National Emblem Vector */}
-            <div className="w-12 h-12 flex-shrink-0 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-lg p-1.5 shadow-sm">
+          <Link href="/" className="flex items-center gap-2.5 sm:gap-3 group">
+            {/* Modern Geometric Bridge & Career Star Icon */}
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-sky-500 flex items-center justify-center shadow-md shadow-blue-500/25 group-hover:scale-104 transition-all duration-200 border border-white/25 flex-shrink-0">
               <svg
-                viewBox="0 0 64 64"
-                className="w-full h-full text-slate-800"
-                fill="currentColor"
+                viewBox="0 0 32 32"
+                className="w-6 h-6 text-white"
+                fill="none"
+                stroke="currentColor"
               >
-                {/* Ashoka Pillar Lion Capital stylized icon */}
-                <path d="M32 4c-4.4 0-8 3.6-8 8 0 2.2.9 4.2 2.3 5.7C24.4 19 23 21.3 23 24c0 3.3 2.7 6 6 6h6c3.3 0 6-2.7 6-6 0-2.7-1.4-5-3.3-6.3 1.4-1.5 2.3-3.5 2.3-5.7 0-4.4-3.6-8-8-8zm-6 28c-4.4 0-8 3.6-8 8v6h28v-6c0-4.4-3.6-8-8-8h-12zm-3 18h38v8H23v-8z" />
-                <circle cx="32" cy="52" r="3" fill="#2563eb" />
+                {/* Central Star of Opportunity */}
+                <path
+                  d="M16 4.5L17.2 9.2L22 10.5L17.2 11.8L16 16.5L14.8 11.8L10 10.5L14.8 9.2L16 4.5Z"
+                  fill="currentColor"
+                  stroke="none"
+                />
+                {/* Modern Suspension Bridge Arch */}
+                <path
+                  d="M4 25.5C8.5 17.5 23.5 17.5 28 25.5"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                />
+                {/* Bridge Foundation Deck */}
+                <path
+                  d="M3 26H29"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                />
+                {/* Suspension Pillars */}
+                <path
+                  d="M10.5 21V26M21.5 21V26"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeOpacity="0.7"
+                />
               </svg>
             </div>
 
             <div className="flex flex-col">
-              <span className="text-2xl font-black tracking-tight text-slate-900 leading-none">
-                Naukri<span className="text-blue-600">Bridge</span>
-              </span>
-              <span className="text-[11px] font-medium text-slate-500 tracking-wide mt-1">
-                Sarkari Naukri, Simplified.
+              <div className="flex items-center gap-1.5">
+                <span className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 leading-none">
+                  Naukri<span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Bridge</span>
+                </span>
+                <span className="hidden sm:inline-block text-[9px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-md border border-blue-200/60 shadow-2xs">
+                  Govt Jobs
+                </span>
+              </div>
+              <span className="text-[11px] font-medium text-slate-500 tracking-wide mt-0.5 flex items-center gap-1.5">
+                <span>Official Sarkari Updates</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
               </span>
             </div>
           </Link>

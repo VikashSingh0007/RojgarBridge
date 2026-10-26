@@ -253,31 +253,6 @@ export default function CandidateJobsPage() {
         </div>
       )}
 
-      {/* Slim & Compact Header Band (Takes minimal screen space) */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-blue-900 text-white px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl shadow-sm border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-        <div className="flex items-center gap-2.5">
-          <span className="flex-shrink-0 w-7 h-7 rounded-lg bg-blue-600/30 border border-blue-400/40 flex items-center justify-center text-sm">
-            🇮🇳
-          </span>
-          <div>
-            <h1 className="text-sm sm:text-base font-extrabold tracking-tight leading-tight">
-              Official Government Job Notifications & Updates
-            </h1>
-            <p className="text-[11px] text-slate-300">
-              Verified notices from UPSC, SSC, Railway, Banking, Defence & State Commissions
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 text-xs self-start sm:self-center">
-          <span className="px-2.5 py-0.5 rounded-full bg-white/10 text-slate-200 border border-white/15 text-[11px] font-semibold whitespace-nowrap">
-            ✓ 100+ Live Notices
-          </span>
-          <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[11px] font-bold whitespace-nowrap">
-            Updated Today
-          </span>
-        </div>
-      </div>
 
       {/* Connection Notice (Only shown if server is offline, clean non-technical text) */}
       {isConnectedToBackend === false && (
