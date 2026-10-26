@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowUpRight, BadgeCheck, Building2, Filter, Landmark, Search, ShieldCheck, TrainFront, University, X } from "lucide-react";
 
 interface SearchAndCategoryBarProps {
   searchQuery: string;
@@ -13,291 +14,101 @@ interface SearchAndCategoryBarProps {
   isFiltersOpen?: boolean;
 }
 
-const ALL_SUGGESTIONS = [
-  { text: "SSC CGL", tag: "Staff Selection Commission", icon: "🏢" },
-  { text: "SSC CHSL", tag: "12th Pass", icon: "🏢" },
-  { text: "UPSC Civil Services", tag: "IAS / IPS / IFS", icon: "🏛️" },
-  { text: "UPSC NDA", tag: "Defence Officer", icon: "🛡️" },
-  { text: "ISRO Scientist / Engineer", tag: "Space Research", icon: "🚀" },
-  { text: "IBPS PO", tag: "Banking Probationary Officer", icon: "🏦" },
-  { text: "SBI Clerk", tag: "Junior Associate", icon: "🏦" },
-  { text: "Railway RRB NTPC", tag: "Indian Railways", icon: "🚂" },
-  { text: "Railway Group D", tag: "10th Pass", icon: "🚂" },
-  { text: "UPPSC Teacher", tag: "Teaching & Faculty", icon: "📚" },
-  { text: "DSSSB Delhi", tag: "Delhi Subordinate", icon: "🏛️" },
-  { text: "BPSC Bihar", tag: "State Commission", icon: "🏛️" },
-  { text: "Police Constable", tag: "Police Department", icon: "👮" },
-  { text: "10th Pass Govt Jobs", tag: "Matriculation", icon: "📄" },
-  { text: "12th Pass Govt Jobs", tag: "Intermediate", icon: "📜" },
-  { text: "Graduate Govt Jobs", tag: "Degree Required", icon: "🎓" },
-  { text: "Engineering Govt Jobs", tag: "B.Tech / Diploma", icon: "🔬" },
-  { text: "Admit Card", tag: "Hall Tickets", icon: "🎫" },
-  { text: "Result", tag: "Merit Lists & Cutoffs", icon: "🏆" },
+const SUGGESTIONS = [
+  { text: "SSC CGL", tag: "Staff Selection Commission" },
+  { text: "UPSC Civil Services", tag: "IAS, IPS and IFS" },
+  { text: "Railway RRB NTPC", tag: "Indian Railways" },
+  { text: "IBPS PO", tag: "Banking" },
+  { text: "10th Pass Govt Jobs", tag: "Matriculation" },
+  { text: "Graduate Govt Jobs", tag: "Degree required" },
 ];
 
-const CATEGORY_PILLS = [
-  { label: "All Jobs", icon: "⚡" },
-  { label: "UPSC", icon: "🏛️" },
-  { label: "SSC", icon: "🏢" },
-  { label: "Railway", icon: "🚂" },
-  { label: "Bank", icon: "🏦" },
-  { label: "ISRO", icon: "🚀" },
-  { label: "State Govt", icon: "🇮🇳" },
-  { label: "Defence", icon: "🛡️" },
-  { label: "Police", icon: "👮" },
-  { label: "Teaching", icon: "📚" },
-  { label: "Graduate", icon: "🎓" },
-  { label: "10th Pass", icon: "📄" },
-  { label: "12th Pass", icon: "📜" },
-  { label: "Engineering", icon: "🔬" },
-  { label: "Medical", icon: "🩺" },
-  { label: "Admit Card", icon: "🎫" },
-  { label: "Result", icon: "🏆" },
+const CATEGORIES = [
+  { label: "All Jobs", icon: BadgeCheck },
+  { label: "SSC", icon: Building2 },
+  { label: "UPSC", icon: Landmark },
+  { label: "Railway", icon: TrainFront },
+  { label: "Bank", icon: University },
+  { label: "State Govt", icon: ShieldCheck },
 ];
 
-const TRENDING_SEARCHES = [
-  "SSC CGL",
-  "ISRO Scientist",
-  "UPSC NDA",
-  "UPPSC",
-  "Teacher",
-  "Bank PO",
-  "10th Pass",
-];
-
-export default function SearchAndCategoryBar({
-  searchQuery,
-  onSearchChange,
-  selectedCategoryPill,
-  onSelectCategoryPill,
-  activeFilterCount,
-  onToggleFiltersModal,
-  onSelectTrendingSearch,
-  isFiltersOpen = true,
-}: SearchAndCategoryBarProps) {
+export default function SearchAndCategoryBar({ searchQuery, onSearchChange, selectedCategoryPill, onSelectCategoryPill, activeFilterCount, onToggleFiltersModal, onSelectTrendingSearch }: SearchAndCategoryBarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
-
-  // Filter suggestions based on searchQuery
   const filteredSuggestions = searchQuery.trim()
-    ? ALL_SUGGESTIONS.filter(
-        (item) =>
-          item.text.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.tag.toLowerCase().includes(searchQuery.toLowerCase())
-      ).slice(0, 7)
-    : ALL_SUGGESTIONS.slice(0, 6);
+    ? SUGGESTIONS.filter((item) => `${item.text} ${item.tag}`.toLowerCase().includes(searchQuery.toLowerCase()))
+    : SUGGESTIONS;
 
-  // Close suggestions when clicking outside
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setShowSuggestions(false);
-      }
+    const close = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) setShowSuggestions(false);
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
   }, []);
 
-  // Keyboard shortcut: Pressing "/" or "Ctrl/Cmd + K" focuses search bar, Escape closes suggestions
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setShowSuggestions(false);
-        return;
-      }
-      if (
-        (e.key === "/" || (e.key === "k" && (e.metaKey || e.ctrlKey))) &&
-        document.activeElement !== inputRef.current &&
-        !(document.activeElement instanceof HTMLInputElement) &&
-        !(document.activeElement instanceof HTMLTextAreaElement)
-      ) {
-        e.preventDefault();
+    const shortcut = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowSuggestions(false);
+      if (event.key === "/" && document.activeElement !== inputRef.current) {
+        event.preventDefault();
         inputRef.current?.focus();
-        setShowSuggestions(true);
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", shortcut);
+    return () => window.removeEventListener("keydown", shortcut);
   }, []);
 
-  const handleSelectSuggestion = (text: string) => {
+  const choose = (text: string) => {
+    (onSelectTrendingSearch || onSearchChange)(text);
     setShowSuggestions(false);
-    if (onSelectTrendingSearch) {
-      onSelectTrendingSearch(text);
-    } else {
-      onSearchChange(text);
-    }
   };
 
   return (
-    <div className="space-y-2">
-      {/* Sleek, Compact Search Bar with Suggestions Dropdown */}
+    <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
       <div ref={containerRef} className="relative">
-        <div className="bg-white rounded-xl border border-slate-200/90 hover:border-slate-300 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 shadow-2xs transition-all flex items-center gap-2 px-3 py-1.5 h-11">
-          {/* Search Icon */}
-          <svg
-            className="w-4 h-4 text-slate-400 flex-shrink-0"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            />
-          </svg>
-
-          {/* Text input */}
+        <div className="flex h-14 items-center rounded-xl border border-slate-300 bg-slate-50/70 p-1 transition-all focus-within:border-teal-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-teal-100">
+          <Search className="ml-3 h-5 w-5 flex-none text-slate-400" />
           <input
             ref={inputRef}
-            type="text"
             value={searchQuery}
-            onChange={(e) => {
-              onSearchChange(e.target.value);
-              setShowSuggestions(true);
-            }}
+            onChange={(event) => { onSearchChange(event.target.value); setShowSuggestions(true); }}
             onFocus={() => setShowSuggestions(true)}
-            placeholder="Search notifications by title, department, exam or post..."
-            className="w-full text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none bg-transparent"
+            placeholder="Search job title, exam, department or qualification"
+            className="min-w-0 flex-1 bg-transparent px-3 text-sm font-medium text-slate-950 outline-none placeholder:font-normal placeholder:text-slate-400 sm:text-base"
+            aria-label="Search government opportunities"
           />
-
-          {/* Clear or Keyboard Shortcut Indicator */}
-          {searchQuery ? (
-            <button
-              onClick={() => {
-                onSearchChange("");
-                setShowSuggestions(false);
-              }}
-              className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1 rounded-md hover:bg-slate-100 transition-colors flex-shrink-0"
-              title="Clear search"
-            >
-              ✕
-            </button>
-          ) : (
-            <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono text-slate-400 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded select-none flex-shrink-0">
-              /
-            </kbd>
-          )}
-
-          {/* Searchbar Filter Toggle Button - Visible on Desktop & Mobile */}
-          <button
-            type="button"
-            onClick={onToggleFiltersModal}
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg transition-all border flex-shrink-0 ${
-              isFiltersOpen || activeFilterCount > 0
-                ? "bg-blue-50 text-blue-700 border-blue-300 shadow-2xs hover:bg-blue-100"
-                : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
-            }`}
-            title={isFiltersOpen ? "Hide filters sidebar" : "Show filters sidebar"}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-            </svg>
-            <span className="hidden xs:inline">{isFiltersOpen ? "Filters ▾" : "Filters ▸"}</span>
-            <span className="xs:hidden">Filters</span>
-            {activeFilterCount > 0 && (
-              <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold">
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
+          {searchQuery && <button onClick={() => onSearchChange("")} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Clear search"><X className="h-4 w-4" /></button>}
+          <button onClick={() => setShowSuggestions(false)} className="hidden h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-teal-700 sm:inline-flex"><Search className="h-4 w-4" />Search</button>
         </div>
 
-        {/* Search Suggestions Dropdown Popover */}
         {showSuggestions && (
-          <div className="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-xl border border-slate-200 shadow-xl z-50 overflow-hidden text-xs divide-y divide-slate-100 animate-in fade-in slide-in-from-top-1 duration-150">
-            <div className="px-3 py-1.5 bg-slate-50/90 flex items-center justify-between text-[11px] text-slate-500 font-semibold">
-              <span className="flex items-center gap-1">
-                <span>🔍</span> {searchQuery.trim() ? "Search Suggestions" : "Popular Searches"}
-              </span>
-              <span className="text-[10px] text-slate-400">Esc to close</span>
-            </div>
-
-            <div className="max-h-60 overflow-y-auto divide-y divide-slate-50">
-              {filteredSuggestions.length > 0 ? (
-                filteredSuggestions.map((item) => (
-                  <button
-                    key={item.text}
-                    type="button"
-                    onClick={() => handleSelectSuggestion(item.text)}
-                    className="w-full px-3.5 py-2 text-left flex items-center justify-between hover:bg-blue-50/80 transition-colors group cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-sm">{item.icon}</span>
-                      <span className="font-semibold text-slate-800 group-hover:text-blue-700">
-                        {item.text}
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-slate-400 group-hover:text-blue-600 font-medium">
-                      {item.tag} ↗
-                    </span>
-                  </button>
-                ))
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => handleSelectSuggestion(searchQuery)}
-                  className="w-full px-3.5 py-2 text-left flex items-center justify-between hover:bg-blue-50/80 transition-colors group cursor-pointer"
-                >
-                  <div className="flex items-center gap-2">
-                    <span>🔍</span>
-                    <span className="font-semibold text-blue-700">
-                      Search for &quot;{searchQuery}&quot;
-                    </span>
-                  </div>
-                  <span className="text-[10px] text-blue-500">Press Enter ↵</span>
-                </button>
-              )}
-            </div>
+          <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white py-2 text-slate-900 shadow-2xl shadow-slate-900/10">
+            <div className="px-4 pb-2 pt-1 text-xs font-bold uppercase tracking-wider text-slate-400">{searchQuery ? "Suggested searches" : "Popular searches"}</div>
+            {(filteredSuggestions.length ? filteredSuggestions : [{ text: searchQuery, tag: "Search all opportunities" }]).map((item) => (
+              <button key={item.text} onClick={() => choose(item.text)} className="flex w-full items-center justify-between gap-4 px-4 py-2.5 text-left hover:bg-slate-50">
+                <span><span className="block text-sm font-semibold text-slate-900">{item.text}</span><span className="block text-xs text-slate-500">{item.tag}</span></span>
+                <ArrowUpRight className="h-4 w-4 flex-none text-slate-400" />
+              </button>
+            ))}
           </div>
         )}
       </div>
 
-      {/* Compact Trending Quick Searches */}
-      <div className="flex items-center gap-1.5 text-xs overflow-x-auto scrollbar-none no-scrollbar py-0.5">
-        <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1 flex-shrink-0">
-          <span>🔥</span> Popular:
-        </span>
-        {TRENDING_SEARCHES.map((query) => (
-          <button
-            key={query}
-            onClick={() => {
-              if (onSelectTrendingSearch) {
-                onSelectTrendingSearch(query);
-              } else {
-                onSearchChange(query);
-              }
-            }}
-            className="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 border border-slate-200/70 font-semibold whitespace-nowrap transition-colors text-[10px]"
-          >
-            {query}
-          </button>
-        ))}
-      </div>
-
-      {/* Compact Category Pills */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none no-scrollbar">
-        {CATEGORY_PILLS.map((pill) => {
-          const isSelected = selectedCategoryPill === pill.label;
+      <div className="mt-2.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+        {CATEGORIES.map(({ label, icon: Icon }) => {
+          const selected = selectedCategoryPill === label;
           return (
-            <button
-              key={pill.label}
-              onClick={() => onSelectCategoryPill(pill.label)}
-              className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold whitespace-nowrap transition-all border ${
-                isSelected
-                  ? "bg-blue-600 border-blue-600 text-white shadow-2xs"
-                  : "bg-white border-slate-200/90 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-              }`}
-            >
-              <span className="text-xs">{pill.icon}</span>
-              <span>{pill.label}</span>
+            <button key={label} onClick={() => onSelectCategoryPill(label)} className={`inline-flex min-h-9 flex-none items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${selected ? "border-teal-200 bg-teal-50 text-teal-800" : "border-transparent bg-slate-50 text-slate-600 hover:border-slate-200 hover:bg-white hover:text-slate-950"}`}>
+              <Icon className="h-3.5 w-3.5" />{label}
             </button>
           );
         })}
+        <button onClick={onToggleFiltersModal} className="inline-flex min-h-9 flex-none items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-teal-300 hover:text-teal-800">
+          <Filter className="h-3.5 w-3.5" />More filters{activeFilterCount > 0 && <span className="rounded-full bg-teal-700 px-1.5 text-[10px] font-extrabold text-white">{activeFilterCount}</span>}
+        </button>
       </div>
-    </div>
+    </section>
   );
 }

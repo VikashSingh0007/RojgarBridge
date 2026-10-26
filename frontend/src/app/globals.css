@@ -5,6 +5,13 @@
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
+  color-scheme: light;
+}
+
+.dark {
+  --background: #0b0e12;
+  --foreground: #e5e7eb;
+  color-scheme: dark;
 }
 
 body {
@@ -14,6 +21,214 @@ body {
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: #bfdbfe;
+  color: #172554;
+}
+
+:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 2px;
+}
+
+button,
+a,
+input,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Teal is the restrained product accent; blue utilities are normalized here
+   so legacy public and admin surfaces share the same visual language. */
+.bg-blue-50,
+.bg-blue-50\/30,
+.bg-blue-50\/40,
+.bg-blue-50\/80 {
+  background-color: #f0fdfa !important;
+}
+
+.bg-blue-100 {
+  background-color: #ccfbf1 !important;
+}
+
+.bg-blue-600 {
+  background-color: #0f766e !important;
+}
+
+.bg-blue-700 {
+  background-color: #115e59 !important;
+}
+
+.text-blue-500,
+.text-blue-600,
+.text-blue-700,
+.text-blue-800 {
+  color: #0f766e !important;
+}
+
+.border-blue-100,
+.border-blue-200,
+.border-blue-300,
+.border-blue-400,
+.border-blue-600 {
+  border-color: #99f6e4 !important;
+}
+
+.hover\:bg-blue-50:hover,
+.hover\:bg-blue-100:hover {
+  background-color: #ccfbf1 !important;
+}
+
+.hover\:bg-blue-600:hover,
+.hover\:bg-blue-700:hover {
+  background-color: #115e59 !important;
+}
+
+/* Neutral dark theme shared by the public and admin workspaces. */
+.dark body {
+  background: #0b0e12 !important;
+  color: #e5e7eb;
+}
+
+.dark .bg-white {
+  background-color: #14181f !important;
+}
+
+.dark .bg-white\/95 {
+  background-color: rgba(20, 24, 31, 0.95) !important;
+}
+
+.dark .bg-slate-50,
+.dark .bg-slate-50\/50,
+.dark .bg-slate-50\/70,
+.dark .bg-slate-50\/80,
+.dark .bg-slate-50\/90 {
+  background-color: #191e26 !important;
+}
+
+.dark .bg-slate-100,
+.dark .bg-slate-100\/80 {
+  background-color: #20262f !important;
+}
+
+.dark .bg-slate-200 {
+  background-color: #303945 !important;
+}
+
+.dark .text-slate-950,
+.dark .text-slate-900,
+.dark .text-slate-800 {
+  color: #f1f5f9 !important;
+}
+
+.dark .text-slate-700,
+.dark .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+
+.dark .text-slate-500,
+.dark .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300,
+.dark .border-slate-200\/60,
+.dark .border-slate-200\/70,
+.dark .border-slate-200\/80,
+.dark .border-slate-200\/90 {
+  border-color: #2d3642 !important;
+}
+
+.dark .divide-slate-50 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #2d3642 !important;
+}
+
+.dark input,
+.dark select,
+.dark textarea {
+  color: #f1f5f9;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #64748b;
+}
+
+.dark .shadow-sm,
+.dark .shadow-md,
+.dark .shadow-lg,
+.dark .shadow-xl,
+.dark .shadow-2xl {
+  --tw-shadow-color: rgba(0, 0, 0, 0.35);
+}
+
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-slate-100:hover,
+.dark .hover\:bg-slate-200:hover {
+  background-color: #252c36 !important;
+}
+
+.dark .hover\:text-slate-900:hover,
+.dark .hover\:text-slate-950:hover {
+  color: #ffffff !important;
+}
+
+.dark .bg-teal-50,
+.dark .bg-emerald-50,
+.dark .bg-emerald-50\/70,
+.dark .bg-blue-50,
+.dark .bg-blue-50\/30,
+.dark .bg-blue-50\/40,
+.dark .bg-blue-50\/60,
+.dark .bg-blue-50\/80,
+.dark .bg-blue-100 {
+  background-color: rgba(13, 148, 136, 0.14) !important;
+}
+
+.dark .bg-red-50,
+.dark .bg-amber-50 {
+  background-color: rgba(127, 29, 29, 0.18) !important;
+}
+
+.dark .bg-emerald-100 {
+  background-color: rgba(13, 148, 136, 0.2) !important;
+}
+
+.dark .border-teal-100,
+.dark .border-teal-200,
+.dark .border-teal-300,
+.dark .border-emerald-100,
+.dark .border-emerald-200 {
+  border-color: rgba(45, 212, 191, 0.35) !important;
+}
+
+.dark .text-teal-700,
+.dark .text-teal-800,
+.dark .text-emerald-600,
+.dark .text-emerald-700,
+.dark .text-emerald-800,
+.dark .text-emerald-900 {
+  color: #5eead4 !important;
+}
+
+.dark .text-blue-500,
+.dark .text-blue-600,
+.dark .text-blue-700,
+.dark .text-blue-800 {
+  color: #5eead4 !important;
+}
+
+.dark .border-blue-100,
+.dark .border-blue-200,
+.dark .border-blue-300,
+.dark .border-blue-400,
+.dark .border-blue-600 {
+  border-color: rgba(45, 212, 191, 0.35) !important;
 }
 
 /* Hide scrollbar for category pills bar */

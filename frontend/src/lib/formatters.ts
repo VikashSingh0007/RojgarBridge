@@ -116,6 +116,26 @@ export function getPortalBadgeStyle(portal: string): { bg: string; text: string;
   }
 }
 
+export function getShortQualification(qualification?: string): string {
+  if (!qualification) return "See official notice";
+  const value = qualification.toLowerCase();
+  if (value.includes("post graduate") || value.includes("master")) return "Post Graduate";
+  if (value.includes("b.e") || value.includes("b.tech") || value.includes("engineering")) return "Engineering Graduate";
+  if (value.includes("12th")) return "12th Pass";
+  if (value.includes("10th")) return "10th Pass";
+  if (value.includes("diploma")) return "Diploma";
+  if (value.includes("iti")) return "ITI";
+  if (value.includes("bachelor") || value.includes("graduate")) return "Graduate";
+  return qualification.length > 32 ? `${qualification.slice(0, 29).trim()}…` : qualification;
+}
+
+export function getCompactDeadlineLabel(label: string): string {
+  return label
+    .replace(/[🚨⚠️⏰]/gu, "")
+    .replace(/^Ends\s+/i, "Closes ")
+    .trim();
+}
+
 // LocalStorage Bookmarks Helpers
 const BOOKMARKS_KEY = "naukribridge_bookmarked_job_ids";
 const LEGACY_BOOKMARKS_KEY = "naukrisetu_bookmarked_job_ids";

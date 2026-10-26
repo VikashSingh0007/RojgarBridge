@@ -170,7 +170,7 @@ export default function AdminReviewPage() {
             <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
               Admin Control Center
             </span>
-            <span className="text-xs text-slate-500">• NaukriBridge Scraper Engine</span>
+            <span className="text-xs text-slate-500">• RojgarBridge Scraper Engine</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900">
             Draft Notifications Review

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Banknote, Building2, Check, Clipboard, ExternalLink, GraduationCap, MapPin, MessageCircle, Pin, WalletCards } from "lucide-react";
 import { JobItem } from "@/types";
 import { getDeadlineStatus, getPortalBadgeStyle } from "@/lib/formatters";
 
@@ -36,7 +37,7 @@ export default function JobDetailsModal({
       d.total_vacancies > 0 ? d.total_vacancies : "Refer PDF"
     }\n⏰ *Last Date:* ${d.application_end || "Refer notice"}\n🔗 *Apply:* ${
       d.official_apply_url || d.official_notice_url || ""
-    }\n\nShared via NaukriBridge`;
+    }\n\nShared via RojgarBridge`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
   };
 
@@ -71,10 +72,10 @@ export default function JobDetailsModal({
               {d.title}
             </h2>
 
-            <p className="text-xs sm:text-sm text-slate-500 flex items-center gap-2">
-              <span>🏢 {d.organization}</span>
+            <p className="text-xs sm:text-sm text-slate-500 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5"><Building2 className="h-4 w-4" />{d.organization}</span>
               <span>•</span>
-              <span>📍 {d.state || "All India"}</span>
+              <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4" />{d.state || "All India"}</span>
               {d.advt_number && (
                 <>
                   <span>•</span>
@@ -166,8 +167,8 @@ export default function JobDetailsModal({
         <div className="space-y-4 text-xs sm:text-sm text-slate-700">
           {/* Pay Scale & Salary */}
           <div>
-            <h4 className="font-bold text-slate-900 mb-1 flex items-center gap-1.5">
-              <span>💰 Pay Scale & Salary</span>
+            <h4 className="font-bold text-slate-900 mb-1 flex items-center gap-2">
+              <Banknote className="h-4 w-4 text-emerald-700" /><span>Pay scale and salary</span>
             </h4>
             <p className="bg-emerald-50/70 text-emerald-900 px-3.5 py-2.5 rounded-xl border border-emerald-200 font-semibold">
               {d.salary_payscale || "As per 7th Central Pay Commission / State Pay Scale"}
@@ -176,8 +177,8 @@ export default function JobDetailsModal({
 
           {/* Educational Qualification */}
           <div>
-            <h4 className="font-bold text-slate-900 mb-1 flex items-center gap-1.5">
-              <span>🎓 Required Qualification</span>
+            <h4 className="font-bold text-slate-900 mb-1 flex items-center gap-2">
+              <GraduationCap className="h-4 w-4 text-blue-700" /><span>Required qualification</span>
             </h4>
             <p className="text-slate-800 bg-slate-50 p-3.5 rounded-xl border border-slate-200 font-medium leading-relaxed">
               {d.qualification || "Please refer to the official notification document."}
@@ -187,7 +188,7 @@ export default function JobDetailsModal({
           {/* Application Fee */}
           {(d.fee_general || d.fee_reserved) && (
             <div>
-              <h4 className="font-bold text-slate-900 mb-1.5">💳 Application Fee Structure</h4>
+              <h4 className="font-bold text-slate-900 mb-1.5 flex items-center gap-2"><WalletCards className="h-4 w-4 text-blue-700" />Application fee</h4>
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                   <span className="text-[11px] text-slate-500 font-medium block">
@@ -212,7 +213,7 @@ export default function JobDetailsModal({
           {/* Key Summary Highlights */}
           {d.summary_points && d.summary_points.length > 0 && (
             <div>
-              <h4 className="font-bold text-slate-900 mb-1.5">📌 Key Highlights & Instructions</h4>
+              <h4 className="font-bold text-slate-900 mb-1.5 flex items-center gap-2"><Pin className="h-4 w-4 text-blue-700" />Key information</h4>
               <ul className="list-disc list-inside space-y-1.5 text-slate-600 bg-blue-50/40 p-4 rounded-xl border border-blue-100">
                 {d.summary_points.map((pt, idx) => (
                   <li key={idx} className="leading-relaxed">
@@ -232,7 +233,7 @@ export default function JobDetailsModal({
               onClick={handleShareWhatsApp}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-semibold transition-colors"
             >
-              <span>💬 WhatsApp</span>
+              <MessageCircle className="h-4 w-4" /><span>WhatsApp</span>
             </button>
 
             {/* Copy Link */}
@@ -240,7 +241,7 @@ export default function JobDetailsModal({
               onClick={handleCopyLink}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition-colors"
             >
-              {copied ? "✓ Link Copied!" : "📋 Copy Link"}
+              {copied ? <><Check className="h-4 w-4" />Link copied</> : <><Clipboard className="h-4 w-4" />Copy link</>}
             </button>
           </div>
 
@@ -251,7 +252,7 @@ export default function JobDetailsModal({
               rel="noopener noreferrer"
               className="font-bold text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
             >
-              <span>📄 Official Notification PDF ↗</span>
+              <span>Official notification</span><ExternalLink className="h-4 w-4" />
             </a>
           )}
         </div>

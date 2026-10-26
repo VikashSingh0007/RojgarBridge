@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
+import { Bookmark, Search } from "lucide-react";
 import { JobItem } from "@/types";
 import { fetchPublishedJobs } from "@/lib/api";
 import { INITIAL_PUBLISHED_JOBS } from "@/lib/mockData";
@@ -9,7 +9,6 @@ import { getSavedJobIds, toggleSavedJobId } from "@/lib/formatters";
 import SearchAndCategoryBar from "@/components/SearchAndCategoryBar";
 import SidebarFilters from "@/components/SidebarFilters";
 import JobTableView from "@/components/JobTableView";
-import JobCard from "@/components/JobCard";
 import JobMobileCards from "@/components/JobMobileCards";
 import Pagination from "@/components/Pagination";
 import JobDetailsModal from "@/components/JobDetailsModal";
@@ -28,9 +27,6 @@ export default function CandidateJobsPage() {
   const [selectedJobTypes, setSelectedJobTypes] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<"latest" | "deadline" | "posts">("latest");
 
-  // View Mode: Grid (Cards) vs Table
-  const [viewMode, setViewMode] = useState<"table" | "grid">("table");
-
   // Bookmarks state
   const [savedJobIds, setSavedJobIds] = useState<number[]>([]);
   const [showOnlySaved, setShowOnlySaved] = useState(false);
@@ -48,7 +44,6 @@ export default function CandidateJobsPage() {
   // Mobile & Desktop Filters State
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isConnectedToBackend, setIsConnectedToBackend] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const handleToggleFilters = () => {
@@ -75,20 +70,10 @@ export default function CandidateJobsPage() {
     (id: number) => {
       const isSaved = toggleSavedJobId(id);
       setSavedJobIds(getSavedJobIds());
-      showToast(isSaved ? "⭐ Saved to your shortlisted jobs!" : "Removed from shortlisted jobs");
+      showToast(isSaved ? "Job saved to your shortlist" : "Job removed from your shortlist");
     },
     [showToast]
   );
-
-  const handleShareWhatsApp = useCallback((job: JobItem) => {
-    const d = job.details;
-    const text = `📢 *${d.title}*\n🏢 *Organization:* ${d.organization}\n👤 *Vacancies:* ${
-      d.total_vacancies > 0 ? d.total_vacancies.toLocaleString() : "Refer PDF"
-    }\n⏰ *Deadline:* ${d.application_end || "Refer notification"}\n🔗 *Apply:* ${
-      d.official_apply_url || d.official_notice_url || "https://naukribridge.gov.in"
-    }\n\nShared via NaukriBridge`;
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
-  }, []);
 
   // Debounce search query to prevent excessive queries while typing
   useEffect(() => {
@@ -182,12 +167,10 @@ export default function CandidateJobsPage() {
 
           setJobs(list);
           setTotalCount(count);
-          setIsConnectedToBackend(true);
         }
       } catch (err) {
         console.warn("Error fetching notifications, showing local backup:", err);
         if (!cancelled) {
-          setIsConnectedToBackend(false);
           let list = INITIAL_PUBLISHED_JOBS;
           if (showOnlySaved) {
             const currentSaved = getSavedJobIds();
@@ -267,40 +250,6 @@ export default function CandidateJobsPage() {
         onSelectTrendingSearch={(t) => setSearchQuery(t)}
       />
 
-      {/* Breadcrumb & Saved Shortlist Button */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-        <nav className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-          <Link href="/" className="hover:text-blue-600">
-            Home
-          </Link>
-          <span>›</span>
-          <span className="text-slate-800 font-semibold">Government Jobs</span>
-        </nav>
-
-        <div className="flex items-center gap-2">
-          {/* Saved Bookmarks Toggle Button */}
-          <button
-            onClick={() => setShowOnlySaved(!showOnlySaved)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
-              showOnlySaved
-                ? "bg-amber-50 text-amber-700 border-amber-300 shadow-2xs scale-102"
-                : "bg-white hover:bg-slate-50 text-slate-600 border-slate-200"
-            }`}
-          >
-            <span>{showOnlySaved ? "⭐" : "☆"}</span>
-            <span>Saved Jobs ({savedJobIds.length})</span>
-          </button>
-
-          {/* Admin Review Portal */}
-          <Link
-            href="/admin"
-            className="inline-flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors"
-          >
-            <span>🛡️ Admin Portal</span>
-          </Link>
-        </div>
-      </div>
-
       {/* Active Filter Chips Bar (Student-friendly non-technical wording) */}
       {activeFilterCount > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 bg-slate-100/80 p-2.5 rounded-xl border border-slate-200 text-xs">
@@ -308,7 +257,7 @@ export default function CandidateJobsPage() {
 
           {showOnlySaved && (
             <span className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-300 text-amber-800 px-2 py-0.5 rounded-full font-bold shadow-2xs">
-              ⭐ Shortlisted Jobs Only
+              Shortlisted jobs only
               <button
                 onClick={() => setShowOnlySaved(false)}
                 className="hover:text-red-600 font-bold ml-0.5"
@@ -442,8 +391,7 @@ export default function CandidateJobsPage() {
 
         {/* Right Main Content (expands to 12 cols when sidebar is closed) */}
         <div className={`${isSidebarOpen ? "lg:col-span-9" : "lg:col-span-12"} space-y-3.5 transition-all`}>
-          {/* Section Header, View Mode Switcher, & Sort Controls (Compact padding) */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-2xs">
+          <div id="jobs" className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
               {!isSidebarOpen && (
                 <button
@@ -464,58 +412,32 @@ export default function CandidateJobsPage() {
                 </button>
               )}
               <div>
-                <h2 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-                  <span>Government Job Notifications</span>
+                <h2 className="flex items-center gap-2 text-base font-extrabold tracking-tight text-slate-950 sm:text-lg">
+                  <span>Latest government opportunities</span>
                   {isLoading && (
                     <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
                   )}
                 </h2>
-                <p className="text-xs text-slate-500">
-                  Showing {jobs.length} of <strong className="text-slate-800">{totalCount}</strong> verified notices
+                <p className="text-sm text-slate-500">
+                  Showing {jobs.length} of <strong className="text-slate-800">{totalCount}</strong> official notices
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 self-end sm:self-center text-xs">
-              {/* View Mode Toggle: Table vs Grid */}
-              <div className="hidden sm:flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
-                <button
-                  onClick={() => setViewMode("table")}
-                  className={`px-2.5 py-1 rounded-md font-bold flex items-center gap-1 transition-all ${
-                    viewMode === "table"
-                      ? "bg-white text-slate-900 shadow-2xs"
-                      : "text-slate-500 hover:text-slate-900"
-                  }`}
-                  title="Table View"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                  </svg>
-                  <span>Table</span>
-                </button>
-                <button
-                  onClick={() => setViewMode("grid")}
-                  className={`px-2.5 py-1 rounded-md font-bold flex items-center gap-1 transition-all ${
-                    viewMode === "grid"
-                      ? "bg-white text-slate-900 shadow-2xs"
-                      : "text-slate-500 hover:text-slate-900"
-                  }`}
-                  title="Grid Cards View"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                  </svg>
-                  <span>Cards</span>
-                </button>
-              </div>
-
-              {/* Sort By Dropdown */}
-              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg shadow-2xs">
-                <span className="text-slate-500 font-medium">Sort:</span>
+            <div id="saved-jobs" className="flex items-center gap-2 self-end text-sm sm:self-center">
+              <button
+                onClick={() => setShowOnlySaved(!showOnlySaved)}
+                className={`inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 font-semibold transition-colors ${showOnlySaved ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+              >
+                <Bookmark className={`h-4 w-4 ${showOnlySaved ? "fill-current" : ""}`} />
+                <span className="hidden lg:inline">Saved</span> ({savedJobIds.length})
+              </button>
+              <div className="flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3">
+                <span className="font-medium text-slate-500">Sort by</span>
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  className="bg-transparent font-bold text-slate-800 focus:outline-none cursor-pointer"
+                  className="cursor-pointer bg-transparent font-bold text-slate-800 focus:outline-none"
                 >
                   <option value="latest">Latest First</option>
                   <option value="deadline">Closing Soon</option>
@@ -535,30 +457,14 @@ export default function CandidateJobsPage() {
             </div>
           ) : jobs.length > 0 ? (
             <>
-              {/* Desktop View (Table vs Grid Cards) */}
+              {/* Desktop list */}
               <div className="hidden sm:block">
-                {viewMode === "table" ? (
-                  <JobTableView
-                    jobs={jobs}
-                    savedJobIds={savedJobIds}
-                    onToggleBookmark={handleToggleBookmark}
-                    onSelectJob={(job) => setSelectedJob(job)}
-                    onShareWhatsApp={handleShareWhatsApp}
-                  />
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                    {jobs.map((job) => (
-                      <JobCard
-                        key={job.id}
-                        job={job}
-                        isBookmarked={savedJobIds.includes(job.id)}
-                        onToggleBookmark={handleToggleBookmark}
-                        onSelectJob={(j) => setSelectedJob(j)}
-                        onShareWhatsApp={handleShareWhatsApp}
-                      />
-                    ))}
-                  </div>
-                )}
+                <JobTableView
+                  jobs={jobs}
+                  savedJobIds={savedJobIds}
+                  onToggleBookmark={handleToggleBookmark}
+                  onSelectJob={(job) => setSelectedJob(job)}
+                />
               </div>
 
               {/* Mobile View (Streamlined Cards) */}
@@ -568,7 +474,6 @@ export default function CandidateJobsPage() {
                   savedJobIds={savedJobIds}
                   onToggleBookmark={handleToggleBookmark}
                   onSelectJob={(job) => setSelectedJob(job)}
-                  onShareWhatsApp={handleShareWhatsApp}
                 />
               </div>
             </>
@@ -576,7 +481,7 @@ export default function CandidateJobsPage() {
             /* Empty State */
             <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center space-y-3 shadow-2xs">
               <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-xl mx-auto">
-                🔍
+                <Search className="h-5 w-5" />
               </div>
               <div className="space-y-0.5">
                 <h3 className="text-base font-extrabold text-slate-800">
