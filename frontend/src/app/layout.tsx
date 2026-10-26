@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import TopGovernmentBar from "@/components/TopGovernmentBar";
 import Navbar from "@/components/Navbar";
 import MobileBottomNav from "@/components/MobileBottomNav";
 
@@ -24,7 +23,6 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className={`${inter.className} min-h-screen flex flex-col bg-[#f8fafc] text-slate-900 antialiased pb-16 lg:pb-0`}>
-        <TopGovernmentBar />
         <Navbar />
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {children}
