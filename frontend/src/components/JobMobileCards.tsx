@@ -30,7 +30,7 @@ export default function JobMobileCards({ jobs, savedJobIds, selectedJobId, onTog
             aria-current={isSelected ? "true" : undefined}
           >
             <div className="flex items-start justify-between gap-3">
-              <h3 className="min-w-0 flex-1 text-base font-bold leading-snug text-slate-950">{d.title}</h3>
+              <h3 className="min-w-0 flex-1 text-xs font-extrabold leading-[1.5] text-slate-950">{d.title}</h3>
               <span className="whitespace-nowrap pt-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">
                 {job.source_portal || d.organization}
               </span>

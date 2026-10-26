@@ -31,7 +31,7 @@ export default function JobTableView({ jobs, savedJobIds, selectedJobId, onToggl
               aria-current={isSelected ? "true" : undefined}
             >
               <div className="min-w-0">
-                <h3 className="text-base font-bold leading-snug text-slate-950 transition-colors group-hover:text-teal-800 sm:text-lg">
+                <h3 className="text-xs font-extrabold leading-[1.5] text-slate-950 transition-colors group-hover:text-teal-800 sm:text-sm">
                   {d.title}
                 </h3>
 

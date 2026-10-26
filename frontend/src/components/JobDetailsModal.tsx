@@ -120,7 +120,7 @@ export default function JobDetailsModal({
             <div className="min-w-0 flex-1">
               <h2
                 id="job-drawer-title"
-                className="max-w-2xl text-lg font-extrabold leading-[1.35] tracking-[-0.02em] text-slate-950 sm:text-xl"
+                className="max-w-2xl text-xs font-extrabold leading-[1.5] text-slate-950 sm:text-sm"
               >
                 {d.title}
               </h2>
