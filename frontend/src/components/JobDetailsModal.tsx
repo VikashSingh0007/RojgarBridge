@@ -1,7 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Banknote, Building2, Check, Clipboard, ExternalLink, GraduationCap, MapPin, MessageCircle, Pin, WalletCards, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Banknote,
+  Bookmark,
+  Building2,
+  CalendarClock,
+  Check,
+  CheckCircle2,
+  Clipboard,
+  ExternalLink,
+  GraduationCap,
+  MapPin,
+  MessageCircle,
+  Users,
+  WalletCards,
+  X,
+} from "lucide-react";
 import { JobItem } from "@/types";
 import { getDeadlineStatus, getPortalBadgeStyle } from "@/lib/formatters";
 
@@ -10,6 +25,26 @@ interface JobDetailsModalProps {
   isBookmarked?: boolean;
   onToggleBookmark?: (id: number) => void;
   onClose: () => void;
+}
+
+function DetailSection({
+  icon,
+  title,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="grid gap-2.5 py-4 sm:grid-cols-[180px_1fr] sm:gap-6">
+      <h3 className="flex items-center gap-2 text-xs font-bold text-slate-500">
+        <span className="text-teal-700">{icon}</span>
+        {title}
+      </h3>
+      <div className="min-w-0 text-sm font-semibold leading-6 text-slate-800">{children}</div>
+    </section>
+  );
 }
 
 export default function JobDetailsModal({
@@ -36,10 +71,24 @@ export default function JobDetailsModal({
     };
   }, [job, onClose]);
 
+  const conciseSummary = useMemo(() => {
+    if (!job?.details.summary_points) return [];
+    return job.details.summary_points
+      .filter((point) => !/https?:\/\//i.test(point))
+      .slice(0, 4);
+  }, [job]);
+
   if (!job) return null;
+
   const d = job.details;
   const deadline = getDeadlineStatus(d.application_end);
   const portalStyle = getPortalBadgeStyle(job.source_portal || d.organization);
+  const noticeUrl = d.official_notice_url;
+  const primaryUrl = d.official_apply_url || noticeUrl;
+  const hasSeparateNotice = Boolean(
+    noticeUrl && d.official_apply_url && noticeUrl !== d.official_apply_url
+  );
+  const deadlineLabel = deadline.type === "unknown" ? "Not specified" : deadline.label;
 
   const handleCopyLink = () => {
     const url = typeof window !== "undefined" ? window.location.href : "";
@@ -50,10 +99,8 @@ export default function JobDetailsModal({
 
   const handleShareWhatsApp = () => {
     const text = `📢 *${d.title}*\n🏢 *Org:* ${d.organization}\n👤 *Vacancies:* ${
-      d.total_vacancies > 0 ? d.total_vacancies : "Refer PDF"
-    }\n⏰ *Last Date:* ${d.application_end || "Refer notice"}\n🔗 *Apply:* ${
-      d.official_apply_url || d.official_notice_url || ""
-    }\n\nShared via RojgarBridge`;
+      d.total_vacancies > 0 ? d.total_vacancies : "Not specified"
+    }\n⏰ *Last Date:* ${d.application_end || "Not specified"}\n🔗 *Apply:* ${primaryUrl || ""}\n\nShared via RojgarBridge`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
   };
 
@@ -69,244 +116,202 @@ export default function JobDetailsModal({
         aria-modal="true"
         aria-labelledby="job-drawer-title"
       >
-        {/* Top Header */}
-        <div className="flex flex-none items-start justify-between gap-4 border-b border-slate-200 px-5 pb-4 pt-1 sm:px-6">
-          <div className="space-y-1.5 flex-1 min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
+        <header className="flex-none border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <h2
+                id="job-drawer-title"
+                className="max-w-2xl text-lg font-extrabold leading-[1.35] tracking-[-0.02em] text-slate-950 sm:text-xl"
+              >
+                {d.title}
+              </h2>
+
+              <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 sm:text-sm">
+                <span className="inline-flex items-center gap-1.5">
+                  <Building2 className="h-4 w-4" />
+                  {d.organization}
+                </span>
+                <span className="text-slate-300">•</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin className="h-4 w-4" />
+                  {d.state || "All India"}
+                </span>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                {d.category ? (
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                    {d.category}
+                  </span>
+                ) : null}
+                {d.notice_type ? (
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold capitalize text-slate-600">
+                    {d.notice_type.replaceAll("_", " ")}
+                  </span>
+                ) : null}
+                {d.advt_number ? (
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-500">
+                    Advt. {d.advt_number}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex flex-none items-center gap-1.5">
               <span
-                className={`text-[11px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${portalStyle.bg} ${portalStyle.text} ${portalStyle.border}`}
+                className={`rounded-md border px-2 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] ${portalStyle.bg} ${portalStyle.text} ${portalStyle.border}`}
               >
                 {job.source_portal || d.organization}
               </span>
-              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                {d.category || "Central Govt"}
-              </span>
-              {d.notice_type && (
-                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100 capitalize">
-                  {d.notice_type.replace("_", " ")}
-                </span>
-              )}
-              {d.confidence_score && (
-                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                  ✓ Official Gazette Verified
-                </span>
-              )}
-            </div>
-
-            <h2 id="job-drawer-title" className="text-lg sm:text-2xl font-black text-slate-900 leading-tight">
-              {d.title}
-            </h2>
-
-            <p className="text-xs sm:text-sm text-slate-500 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5"><Building2 className="h-4 w-4" />{d.organization}</span>
-              <span>•</span>
-              <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4" />{d.state || "All India"}</span>
-              {d.advt_number && (
-                <>
-                  <span>•</span>
-                  <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-[11px] text-slate-600">
-                    Advt: {d.advt_number}
-                  </span>
-                </>
-              )}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            {/* Bookmark button */}
-            {onToggleBookmark && (
-              <button
-                onClick={() => onToggleBookmark(job.id)}
-                className={`p-2 rounded-xl border transition-colors ${
-                  isBookmarked
-                    ? "bg-amber-50 text-amber-500 border-amber-300"
-                    : "bg-slate-50 text-slate-400 hover:text-amber-500 border-slate-200"
-                }`}
-                title={isBookmarked ? "Saved" : "Bookmark this job"}
-                aria-label="Bookmark"
-              >
-                <svg
-                  className="w-4 h-4 fill-current"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={isBookmarked ? 0 : 2}
+              {onToggleBookmark ? (
+                <button
+                  onClick={() => onToggleBookmark(job.id)}
+                  className={`flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
+                    isBookmarked
+                      ? "bg-amber-50 text-amber-600"
+                      : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  }`}
+                  title={isBookmarked ? "Remove saved job" : "Save job"}
+                  aria-label={isBookmarked ? "Remove saved job" : "Save job"}
                 >
-                  <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-                </svg>
+                  <Bookmark className={`h-4 w-4 ${isBookmarked ? "fill-current" : ""}`} />
+                </button>
+              ) : null}
+              <button
+                onClick={onClose}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Close job details"
+              >
+                <X className="h-5 w-5" />
               </button>
-            )}
-
-            {/* Close Button */}
-            <button
-              onClick={onClose}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
-              aria-label="Close"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
-
-        {/* Highlights 4-box Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-gradient-to-br from-slate-50 to-blue-50/30 rounded-2xl p-4 border border-slate-200/90 shadow-2xs">
-          <div className="space-y-0.5">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-              Total Vacancies
-            </p>
-            <p className="text-base sm:text-lg font-black text-slate-900">
-              {d.total_vacancies > 0 ? `${d.total_vacancies.toLocaleString()} Posts` : "Refer PDF"}
-            </p>
-          </div>
-
-          <div className="space-y-0.5">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-              Application Deadline
-            </p>
-            <span
-              className={`inline-block text-xs font-bold px-2 py-0.5 rounded-md border ${deadline.bgClass} ${deadline.textClass} ${deadline.borderClass}`}
-            >
-              {deadline.label}
-            </span>
-          </div>
-
-          <div className="space-y-0.5">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-              Age Limit
-            </p>
-            <p className="text-xs sm:text-sm font-bold text-slate-800">
-              {d.min_age && d.max_age ? `${d.min_age} - ${d.max_age} Yrs` : "As per Govt Rules"}
-            </p>
-          </div>
-
-          <div className="space-y-0.5">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-              Exam Date
-            </p>
-            <p className="text-xs sm:text-sm font-bold text-slate-800 truncate" title={d.exam_date}>
-              {d.exam_date || "To be announced"}
-            </p>
-          </div>
-        </div>
-
-        {/* Detailed Breakdown Sections */}
-        <div className="space-y-4 text-xs sm:text-sm text-slate-700">
-          {/* Pay Scale & Salary */}
-          <div>
-            <h4 className="font-bold text-slate-900 mb-1 flex items-center gap-2">
-              <Banknote className="h-4 w-4 text-emerald-700" /><span>Pay scale and salary</span>
-            </h4>
-            <p className="bg-emerald-50/70 text-emerald-900 px-3.5 py-2.5 rounded-xl border border-emerald-200 font-semibold">
-              {d.salary_payscale || "As per 7th Central Pay Commission / State Pay Scale"}
-            </p>
-          </div>
-
-          {/* Educational Qualification */}
-          <div>
-            <h4 className="font-bold text-slate-900 mb-1 flex items-center gap-2">
-              <GraduationCap className="h-4 w-4 text-blue-700" /><span>Required qualification</span>
-            </h4>
-            <p className="text-slate-800 bg-slate-50 p-3.5 rounded-xl border border-slate-200 font-medium leading-relaxed">
-              {d.qualification || "Please refer to the official notification document."}
-            </p>
-          </div>
-
-          {/* Application Fee */}
-          {(d.fee_general || d.fee_reserved) && (
-            <div>
-              <h4 className="font-bold text-slate-900 mb-1.5 flex items-center gap-2"><WalletCards className="h-4 w-4 text-blue-700" />Application fee</h4>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <span className="text-[11px] text-slate-500 font-medium block">
-                    General / OBC / EWS
-                  </span>
-                  <span className="text-sm font-bold text-slate-900">
-                    {d.fee_general || "Refer notice"}
-                  </span>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <span className="text-[11px] text-slate-500 font-medium block">
-                    SC / ST / PwD / Female
-                  </span>
-                  <span className="text-sm font-bold text-slate-900">
-                    {d.fee_reserved || "Refer notice"}
-                  </span>
-                </div>
-              </div>
             </div>
-          )}
+          </div>
+        </header>
 
-          {/* Key Summary Highlights */}
-          {d.summary_points && d.summary_points.length > 0 && (
+        <div className="flex-1 overflow-y-auto px-5 sm:px-6">
+          <section className="grid grid-cols-2 gap-x-4 gap-y-4 border-b border-slate-200 py-5 sm:grid-cols-4">
             <div>
-              <h4 className="font-bold text-slate-900 mb-1.5 flex items-center gap-2"><Pin className="h-4 w-4 text-blue-700" />Key information</h4>
-              <ul className="list-disc list-inside space-y-1.5 text-slate-600 bg-blue-50/40 p-4 rounded-xl border border-blue-100">
-                {d.summary_points.map((pt, idx) => (
-                  <li key={idx} className="leading-relaxed">
-                    {pt}
-                  </li>
-                ))}
-              </ul>
+              <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                Closing date
+              </p>
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-extrabold ${deadline.bgClass} ${deadline.textClass} ${deadline.borderClass}`}
+              >
+                <CalendarClock className="h-3.5 w-3.5" />
+                {deadlineLabel}
+              </span>
             </div>
-          )}
-        </div>
+            <div className="sm:border-l sm:border-slate-200 sm:pl-4">
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                Vacancies
+              </p>
+              <p className="text-sm font-extrabold text-slate-900">
+                {d.total_vacancies > 0 ? d.total_vacancies.toLocaleString() : "Not specified"}
+              </p>
+            </div>
+            <div className="sm:border-l sm:border-slate-200 sm:pl-4">
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                Age limit
+              </p>
+              <p className="text-sm font-extrabold text-slate-900">
+                {d.min_age && d.max_age ? `${d.min_age}–${d.max_age} years` : "Not specified"}
+              </p>
+            </div>
+            <div className="sm:border-l sm:border-slate-200 sm:pl-4">
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                Exam date
+              </p>
+              <p className="text-sm font-extrabold text-slate-900">
+                {d.exam_date || "Not announced"}
+              </p>
+            </div>
+          </section>
 
-        {/* Share & Quick Utility Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
-          <div className="flex items-center gap-2">
-            {/* Share WhatsApp */}
+          <div className="divide-y divide-slate-100">
+            <DetailSection icon={<GraduationCap className="h-4 w-4" />} title="Required qualification">
+              {d.qualification || "Not specified in the notice"}
+            </DetailSection>
+
+            <DetailSection icon={<Banknote className="h-4 w-4" />} title="Pay scale and salary">
+              {d.salary_payscale || "Not specified in the notice"}
+            </DetailSection>
+
+            <DetailSection icon={<WalletCards className="h-4 w-4" />} title="Application fee">
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <dt className="text-[11px] font-medium text-slate-500">General / OBC / EWS</dt>
+                  <dd className="mt-0.5 text-sm font-bold text-slate-900">
+                    {d.fee_general || "Not specified"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-medium text-slate-500">SC / ST / PwD / Female</dt>
+                  <dd className="mt-0.5 text-sm font-bold text-slate-900">
+                    {d.fee_reserved || "Not specified"}
+                  </dd>
+                </div>
+              </dl>
+            </DetailSection>
+
+            {conciseSummary.length > 0 ? (
+              <DetailSection icon={<Users className="h-4 w-4" />} title="Key information">
+                <ul className="space-y-2 font-medium text-slate-600">
+                  {conciseSummary.map((point, index) => (
+                    <li key={`${point}-${index}`} className="flex gap-2.5">
+                      <CheckCircle2 className="mt-1 h-3.5 w-3.5 flex-none text-teal-600" />
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              </DetailSection>
+            ) : null}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 py-4 text-xs">
             <button
               onClick={handleShareWhatsApp}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-semibold transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
             >
-              <MessageCircle className="h-4 w-4" /><span>WhatsApp</span>
+              <MessageCircle className="h-4 w-4" />
+              Share
             </button>
-
-            {/* Copy Link */}
             <button
               onClick={handleCopyLink}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
             >
-              {copied ? <><Check className="h-4 w-4" />Link copied</> : <><Clipboard className="h-4 w-4" />Copy link</>}
+              {copied ? <Check className="h-4 w-4" /> : <Clipboard className="h-4 w-4" />}
+              {copied ? "Link copied" : "Copy link"}
             </button>
           </div>
+        </div>
 
-          {d.official_notice_url && (
+        <footer className="flex flex-none items-center justify-end gap-2 border-t border-slate-200 bg-white px-5 py-3 sm:px-6">
+          {hasSeparateNotice ? (
             <a
-              href={d.official_notice_url}
+              href={noticeUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-bold text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
+              className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100"
             >
-              <span>Official notification</span><ExternalLink className="h-4 w-4" />
+              View official notice
+              <ExternalLink className="h-3.5 w-3.5" />
             </a>
+          ) : null}
+
+          {primaryUrl ? (
+            <a
+              href={primaryUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-5 py-2.5 text-xs font-extrabold text-white shadow-sm transition-colors hover:bg-slate-800 sm:text-sm"
+            >
+              {d.official_apply_url ? "Apply on official website" : "Open official notification"}
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          ) : (
+            <span className="text-xs font-semibold text-slate-500">Official link unavailable</span>
           )}
-        </div>
-
-        </div>
-
-        {/* Action Footer */}
-        <div className="flex flex-none items-center justify-end gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:px-6">
-          <button
-            onClick={onClose}
-            className="px-5 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
-          >
-            Close
-          </button>
-
-          <a
-            href={d.official_apply_url || d.official_notice_url || "#"}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-6 py-2.5 text-xs sm:text-sm font-black text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl shadow-md hover:shadow-lg transition-all"
-          >
-            <span>Apply on Official Portal</span>
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-            </svg>
-          </a>
-        </div>
+        </footer>
       </aside>
     </div>
   );
