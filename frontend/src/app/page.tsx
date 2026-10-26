@@ -254,23 +254,6 @@ export default function CandidateJobsPage() {
       )}
 
 
-      {/* Connection Notice (Only shown if server is offline, clean non-technical text) */}
-      {isConnectedToBackend === false && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-900 px-3.5 py-2 rounded-xl text-xs flex items-center justify-between shadow-2xs">
-          <div className="flex items-center gap-2">
-            <span>ℹ️</span>
-            <span>
-              Showing preloaded official notifications. Connecting to live updates server...
-            </span>
-          </div>
-          <button
-            onClick={() => setCurrentPage(1)}
-            className="font-bold text-blue-700 hover:underline ml-2"
-          >
-            Refresh ↻
-          </button>
-        </div>
-      )}
 
       {/* Search & Category Pills */}
       <SearchAndCategoryBar

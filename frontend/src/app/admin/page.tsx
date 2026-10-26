@@ -164,35 +164,35 @@ export default function AdminReviewPage() {
       )}
 
       {/* Admin Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 text-white rounded-2xl p-6 shadow-md">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white text-slate-900 rounded-2xl p-5 border border-slate-200 shadow-2xs">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
+            <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
               Admin Control Center
             </span>
-            <span className="text-xs text-slate-400">• RozgarHub Scraping Engine</span>
+            <span className="text-xs text-slate-500">• NaukriBridge Scraper Engine</span>
           </div>
-          <h1 className="text-2xl font-black tracking-tight">
-            AI Scraped Draft Notices Review
+          <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900">
+            Draft Notifications Review
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 mt-0.5">
             Review auto-scraped notifications, verify details against original portal notices, and publish with 1 click.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <Link
             href="/"
-            className="px-4 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 transition-colors"
+            className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 transition-colors"
           >
-            ← View Candidate Feed
+            ← Candidate Feed
           </Link>
 
           <button
             onClick={handleTriggerScraper}
-            className="flex items-center gap-2 px-5 py-2 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-500 text-white shadow-md transition-all"
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-2xs transition-all"
           >
-            <span>🔄 Sync Now (Run Scraper)</span>
+            <span>🔄 Sync Now</span>
           </button>
         </div>
       </div>
