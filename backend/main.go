@@ -24,13 +24,17 @@ func main() {
 	log.Println("      RojgarBridge Backend Engine Starting        ")
 	log.Println("==================================================")
 
-	// 1. Initialize SQLite Database
-	database, err := db.InitDB(cfg.DBPath)
+	// 1. Initialize Database (Neon Postgres or fallback SQLite)
+	database, err := db.InitDB(cfg.DBPath, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("Fatal: Database initialization failed: %v", err)
 	}
 	defer database.Close()
-	log.Printf("[DB] Connected to SQLite database: %s", cfg.DBPath)
+	if cfg.DatabaseURL != "" {
+		log.Println("[DB] Connected to Neon PostgreSQL database.")
+	} else {
+		log.Printf("[DB] Connected to SQLite database: %s", cfg.DBPath)
+	}
 
 	// 2. Initialize Extractor
 	if cfg.GeminiAPIKey != "" {

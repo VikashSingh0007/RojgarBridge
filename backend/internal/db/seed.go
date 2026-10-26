@@ -317,12 +317,23 @@ func (d *DB) SeedInitialVerifiedJobs() error {
 			continue
 		}
 		now := time.Now()
-		query := `
-		INSERT OR IGNORE INTO jobs (hash, source_portal, status, raw_notice, details, review_notes, created_at, updated_at, published_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`
-		if _, err := d.conn.Exec(query, job.Hash, job.SourcePortal, models.StatusPublished, string(rawJSON), string(detJSON), job.ReviewNotes, now, now, now); err != nil {
-			return fmt.Errorf("failed inserting seed job: %w", err)
+		if d.driverName == "postgres" {
+			query := `
+			INSERT INTO jobs (hash, source_portal, status, raw_notice, details, review_notes, created_at, updated_at, published_at)
+			VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9)
+			ON CONFLICT (hash) DO NOTHING
+			`
+			if _, err := d.conn.Exec(query, job.Hash, job.SourcePortal, models.StatusPublished, string(rawJSON), string(detJSON), job.ReviewNotes, now, now, now); err != nil {
+				return fmt.Errorf("failed inserting seed job: %w", err)
+			}
+		} else {
+			query := `
+			INSERT OR IGNORE INTO jobs (hash, source_portal, status, raw_notice, details, review_notes, created_at, updated_at, published_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`
+			if _, err := d.conn.Exec(query, job.Hash, job.SourcePortal, models.StatusPublished, string(rawJSON), string(detJSON), job.ReviewNotes, now, now, now); err != nil {
+				return fmt.Errorf("failed inserting seed job: %w", err)
+			}
 		}
 	}
 

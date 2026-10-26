@@ -12,7 +12,7 @@ import (
 
 func main() {
 	cfg := config.Load()
-	database, err := db.InitDB(cfg.DBPath)
+	database, err := db.InitDB(cfg.DBPath, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("db error: %v", err)
 	}
