@@ -11,6 +11,7 @@ import (
 
 	_ "github.com/lib/pq"
 	_ "modernc.org/sqlite"
+	"golang.org/x/crypto/bcrypt"
 	"rojgarbridge-backend/internal/models"
 )
 
@@ -67,6 +68,10 @@ func InitDB(dbPath, databaseURL string) (*DB, error) {
 			return nil, fmt.Errorf("failed ensuring published jobs: %w", err)
 		}
 
+		if err := db.EnsureDefaultAdmin(); err != nil {
+			return nil, fmt.Errorf("failed ensuring default admin user: %w", err)
+		}
+
 		return db, nil
 	}
 
@@ -96,6 +101,10 @@ func InitDB(dbPath, databaseURL string) (*DB, error) {
 
 	if err := db.EnsurePublishedJobs(); err != nil {
 		return nil, fmt.Errorf("failed ensuring published jobs: %w", err)
+	}
+
+	if err := db.EnsureDefaultAdmin(); err != nil {
+		return nil, fmt.Errorf("failed ensuring default admin user: %w", err)
 	}
 
 	return db, nil
@@ -154,9 +163,28 @@ func (d *DB) migrate() error {
 		CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 		CREATE INDEX IF NOT EXISTS idx_jobs_hash ON jobs(hash);
 		CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at DESC);
+
+		CREATE TABLE IF NOT EXISTS users (
+			id SERIAL PRIMARY KEY,
+			name TEXT NOT NULL,
+			email TEXT UNIQUE NOT NULL,
+			password_hash TEXT NOT NULL DEFAULT '',
+			role TEXT NOT NULL DEFAULT 'user',
+			phone TEXT DEFAULT '',
+			google_id TEXT DEFAULT '',
+			avatar_url TEXT DEFAULT '',
+			auth_provider TEXT DEFAULT 'local',
+			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+		CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
 		`
-		_, err := d.conn.Exec(query)
-		return err
+		if _, err := d.conn.Exec(query); err != nil {
+			return err
+		}
+		d.ensureUserColumns()
+		return nil
 	}
 
 	query := `
@@ -175,9 +203,77 @@ func (d *DB) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 	CREATE INDEX IF NOT EXISTS idx_jobs_hash ON jobs(hash);
 	CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at DESC);
+
+	CREATE TABLE IF NOT EXISTS users (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		email TEXT UNIQUE NOT NULL,
+		password_hash TEXT NOT NULL DEFAULT '',
+		role TEXT NOT NULL DEFAULT 'user',
+		phone TEXT DEFAULT '',
+		google_id TEXT DEFAULT '',
+		avatar_url TEXT DEFAULT '',
+		auth_provider TEXT DEFAULT 'local',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+	CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
 	`
-	_, err := d.conn.Exec(query)
-	return err
+	if _, err := d.conn.Exec(query); err != nil {
+		return err
+	}
+	d.ensureUserColumns()
+	return nil
+}
+
+func (d *DB) ensureUserColumns() {
+	if d.driverName == "postgres" {
+		_, _ = d.conn.Exec(`
+			ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT DEFAULT '';
+			ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT '';
+			ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT DEFAULT 'local';
+			CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
+		`)
+		return
+	}
+
+	rows, err := d.conn.Query("PRAGMA table_info(users)")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	hasGoogleID := false
+	hasAvatarURL := false
+	hasAuthProvider := false
+
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dfltValue sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err == nil {
+			switch name {
+			case "google_id":
+				hasGoogleID = true
+			case "avatar_url":
+				hasAvatarURL = true
+			case "auth_provider":
+				hasAuthProvider = true
+			}
+		}
+	}
+
+	if !hasGoogleID {
+		_, _ = d.conn.Exec("ALTER TABLE users ADD COLUMN google_id TEXT DEFAULT ''")
+	}
+	if !hasAvatarURL {
+		_, _ = d.conn.Exec("ALTER TABLE users ADD COLUMN avatar_url TEXT DEFAULT ''")
+	}
+	if !hasAuthProvider {
+		_, _ = d.conn.Exec("ALTER TABLE users ADD COLUMN auth_provider TEXT DEFAULT 'local'")
+	}
 }
 
 func (d *DB) ExistsByHash(hash string) (bool, error) {
@@ -804,6 +900,275 @@ func (d *DB) GetJobsForReExtraction() ([]models.Job, error) {
 	}
 
 	return jobs, nil
+}
+
+func (d *DB) EnsureDefaultAdmin() error {
+	const adminEmail = "admin@admin.com"
+	const adminPass = "admin@7077"
+
+	var count int
+	err := d.conn.QueryRow(d.rebind("SELECT COUNT(1) FROM users WHERE LOWER(email) = LOWER(?)"), adminEmail).Scan(&count)
+	if err != nil {
+		return err
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(adminPass), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	if count == 0 {
+		if d.driverName == "postgres" {
+			_, err = d.conn.Exec(`
+				INSERT INTO users (name, email, password_hash, role, phone, created_at, updated_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
+			`, "System Administrator", adminEmail, string(hash), string(models.RoleAdmin), "", now, now)
+		} else {
+			_, err = d.conn.Exec(`
+				INSERT INTO users (name, email, password_hash, role, phone, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+			`, "System Administrator", adminEmail, string(hash), string(models.RoleAdmin), "", now, now)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to insert default admin: %w", err)
+		}
+	} else {
+		_, err = d.conn.Exec(d.rebind("UPDATE users SET password_hash = ?, role = 'admin', updated_at = ? WHERE LOWER(email) = LOWER(?)"), string(hash), now, adminEmail)
+		if err != nil {
+			return fmt.Errorf("failed to update default admin: %w", err)
+		}
+	}
+	return nil
+}
+
+func (d *DB) CreateUser(u *models.User, rawPassword string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(rawPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	now := time.Now()
+	u.PasswordHash = string(hash)
+	if u.Role == "" {
+		u.Role = models.RoleUser
+	}
+	u.CreatedAt = now
+	u.UpdatedAt = now
+
+	if d.driverName == "postgres" {
+		query := `
+		INSERT INTO users (name, email, password_hash, role, phone, google_id, avatar_url, auth_provider, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING id
+		`
+		var id int64
+		err := d.conn.QueryRow(query, u.Name, u.Email, u.PasswordHash, string(u.Role), u.Phone, u.GoogleID, u.AvatarURL, u.AuthProvider, now, now).Scan(&id)
+		if err != nil {
+			return err
+		}
+		u.ID = id
+		return nil
+	}
+
+	query := `
+	INSERT INTO users (name, email, password_hash, role, phone, google_id, avatar_url, auth_provider, created_at, updated_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	res, err := d.conn.Exec(query, u.Name, u.Email, u.PasswordHash, string(u.Role), u.Phone, u.GoogleID, u.AvatarURL, u.AuthProvider, now, now)
+	if err != nil {
+		return err
+	}
+	id, err := res.LastInsertId()
+	if err == nil {
+		u.ID = id
+	}
+	return nil
+}
+
+func (d *DB) GetUserByEmail(email string) (*models.User, error) {
+	query := d.rebind(`
+	SELECT id, name, email, password_hash, role, phone, google_id, avatar_url, auth_provider, created_at, updated_at
+	FROM users
+	WHERE LOWER(email) = LOWER(?)
+	LIMIT 1
+	`)
+	row := d.conn.QueryRow(query, strings.TrimSpace(email))
+	var u models.User
+	var roleStr string
+	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &roleStr, &u.Phone, &u.GoogleID, &u.AvatarURL, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	u.Role = models.UserRole(roleStr)
+	return &u, nil
+}
+
+func (d *DB) GetUserByID(id int64) (*models.User, error) {
+	query := d.rebind(`
+	SELECT id, name, email, password_hash, role, phone, google_id, avatar_url, auth_provider, created_at, updated_at
+	FROM users
+	WHERE id = ?
+	LIMIT 1
+	`)
+	row := d.conn.QueryRow(query, id)
+	var u models.User
+	var roleStr string
+	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &roleStr, &u.Phone, &u.GoogleID, &u.AvatarURL, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	u.Role = models.UserRole(roleStr)
+	return &u, nil
+}
+
+// FindOrCreateGoogleUser finds existing user by Google ID or Email, or registers a new user
+func (d *DB) FindOrCreateGoogleUser(g *models.GoogleUserInfo) (*models.User, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	email := strings.TrimSpace(g.Email)
+	now := time.Now()
+
+	// 1. Check by google_id
+	if g.ID != "" {
+		query := d.rebind(`
+		SELECT id, name, email, password_hash, role, phone, google_id, avatar_url, auth_provider, created_at, updated_at
+		FROM users
+		WHERE google_id = ?
+		LIMIT 1
+		`)
+		row := d.conn.QueryRow(query, g.ID)
+		var u models.User
+		var roleStr string
+		err := row.Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &roleStr, &u.Phone, &u.GoogleID, &u.AvatarURL, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt)
+		if err == nil {
+			// Update picture / name if changed
+			if g.Picture != "" && u.AvatarURL != g.Picture {
+				u.AvatarURL = g.Picture
+				_, _ = d.conn.Exec(d.rebind("UPDATE users SET avatar_url = ?, updated_at = ? WHERE id = ?"), g.Picture, now, u.ID)
+			}
+			u.Role = models.UserRole(roleStr)
+			return &u, nil
+		}
+	}
+
+	// 2. Check by email
+	if email != "" {
+		query := d.rebind(`
+		SELECT id, name, email, password_hash, role, phone, google_id, avatar_url, auth_provider, created_at, updated_at
+		FROM users
+		WHERE LOWER(email) = LOWER(?)
+		LIMIT 1
+		`)
+		row := d.conn.QueryRow(query, email)
+		var u models.User
+		var roleStr string
+		err := row.Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &roleStr, &u.Phone, &u.GoogleID, &u.AvatarURL, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt)
+		if err == nil {
+			// Link Google ID & Avatar to existing user
+			u.GoogleID = g.ID
+			if g.Picture != "" {
+				u.AvatarURL = g.Picture
+			}
+			u.AuthProvider = "google"
+			u.UpdatedAt = now
+			_, _ = d.conn.Exec(d.rebind("UPDATE users SET google_id = ?, avatar_url = ?, auth_provider = 'google', updated_at = ? WHERE id = ?"), g.ID, u.AvatarURL, now, u.ID)
+			u.Role = models.UserRole(roleStr)
+			return &u, nil
+		}
+	}
+
+	// 3. Create new Google user
+	name := strings.TrimSpace(g.Name)
+	if name == "" {
+		name = strings.Split(email, "@")[0]
+	}
+
+	newUser := &models.User{
+		Name:         name,
+		Email:        email,
+		Role:         models.RoleUser,
+		GoogleID:     g.ID,
+		AvatarURL:    g.Picture,
+		AuthProvider: "google",
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+
+	if d.driverName == "postgres" {
+		query := `
+		INSERT INTO users (name, email, password_hash, role, phone, google_id, avatar_url, auth_provider, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING id
+		`
+		var id int64
+		err := d.conn.QueryRow(query, newUser.Name, newUser.Email, "", string(newUser.Role), "", newUser.GoogleID, newUser.AvatarURL, newUser.AuthProvider, now, now).Scan(&id)
+		if err != nil {
+			return nil, err
+		}
+		newUser.ID = id
+		return newUser, nil
+	}
+
+	query := `
+	INSERT INTO users (name, email, password_hash, role, phone, google_id, avatar_url, auth_provider, created_at, updated_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	res, err := d.conn.Exec(query, newUser.Name, newUser.Email, "", string(newUser.Role), "", newUser.GoogleID, newUser.AvatarURL, newUser.AuthProvider, now, now)
+	if err != nil {
+		return nil, err
+	}
+	id, err := res.LastInsertId()
+	if err == nil {
+		newUser.ID = id
+	}
+
+	return newUser, nil
+}
+
+func (d *DB) ListUsers(limit, offset int) ([]models.User, int, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	var total int
+	err := d.conn.QueryRow("SELECT COUNT(1) FROM users").Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	query := d.rebind(`
+	SELECT id, name, email, password_hash, role, phone, google_id, avatar_url, auth_provider, created_at, updated_at
+	FROM users
+	ORDER BY id ASC
+	LIMIT ? OFFSET ?
+	`)
+	rows, err := d.conn.Query(query, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	users := make([]models.User, 0)
+	for rows.Next() {
+		var u models.User
+		var roleStr string
+		err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &roleStr, &u.Phone, &u.GoogleID, &u.AvatarURL, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt)
+		if err != nil {
+			return nil, 0, err
+		}
+		u.Role = models.UserRole(roleStr)
+		users = append(users, u)
+	}
+
+	return users, total, nil
 }
 
 func (d *DB) Close() error {

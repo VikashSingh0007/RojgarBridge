@@ -69,7 +69,7 @@ func main() {
 	}
 
 	// 6. Initialize API Router
-	handler := api.NewHandler(database, manager, tgNotifier)
+	handler := api.NewHandler(database, manager, tgNotifier, cfg)
 	router := api.NewRouter(handler)
 
 	server := &http.Server{

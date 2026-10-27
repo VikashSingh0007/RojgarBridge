@@ -13,6 +13,10 @@ type Config struct {
 	Environment      string
 	TelegramBotToken string
 	TelegramChatID   string
+	GoogleClientID   string
+	GoogleClientSecret string
+	GoogleRedirectURL string
+	FrontendURL      string
 }
 
 func loadDotEnv() {
@@ -51,7 +55,7 @@ func Load() *Config {
 
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
-		dbPath = "rojgarbridge.db"
+		dbPath = "rozgarhub.db"
 	}
 
 	databaseURL := os.Getenv("DATABASE_URL")
@@ -65,13 +69,29 @@ func Load() *Config {
 	tgToken := os.Getenv("TELEGRAM_BOT_TOKEN")
 	tgChatID := os.Getenv("TELEGRAM_CHAT_ID")
 
+	googleClientID := os.Getenv("GOOGLE_CLIENT_ID")
+	googleClientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")
+	googleRedirectURL := os.Getenv("GOOGLE_REDIRECT_URL")
+	if googleRedirectURL == "" {
+		googleRedirectURL = "http://localhost:" + port + "/api/auth/google/callback"
+	}
+
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:3000"
+	}
+
 	return &Config{
-		Port:             port,
-		DBPath:           dbPath,
-		DatabaseURL:      databaseURL,
-		GeminiAPIKey:     apiKey,
-		Environment:      env,
-		TelegramBotToken: tgToken,
-		TelegramChatID:   tgChatID,
+		Port:               port,
+		DBPath:             dbPath,
+		DatabaseURL:        databaseURL,
+		GeminiAPIKey:       apiKey,
+		Environment:        env,
+		TelegramBotToken:   tgToken,
+		TelegramChatID:     tgChatID,
+		GoogleClientID:     googleClientID,
+		GoogleClientSecret: googleClientSecret,
+		GoogleRedirectURL:  googleRedirectURL,
+		FrontendURL:        frontendURL,
 	}
 }

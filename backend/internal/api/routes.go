@@ -35,6 +35,19 @@ func NewRouter(h *Handler) *chi.Mux {
 	r.Get("/sitemap.xml", h.GetSitemap)
 
 	r.Route("/api", func(r chi.Router) {
+		r.Route("/auth", func(r chi.Router) {
+			r.Post("/login", h.Login)
+			r.Get("/me", h.GetAuthMe)
+			r.Get("/google/login", h.GoogleLogin)
+			r.Get("/google/callback", h.GoogleCallback)
+			r.Post("/google/verify", h.GoogleVerifyToken)
+		})
+
+		r.Route("/users", func(r chi.Router) {
+			r.Get("/", h.GetUsers)
+			r.Post("/", h.CreateUser)
+		})
+
 		r.Route("/jobs", func(r chi.Router) {
 			r.Get("/", h.GetAllJobs)
 			r.Get("/search", h.SearchJobs)
