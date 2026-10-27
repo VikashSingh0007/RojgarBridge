@@ -87,3 +87,31 @@ export interface FilterState {
   states: string[];
   sortBy: "latest" | "deadline" | "posts";
 }
+
+export interface User {
+  id: number;
+  name: string;
+  email: string;
+  role: "admin" | "user";
+  phone?: string;
+  google_id?: string;
+  avatar_url?: string;
+  auth_provider?: "local" | "google" | string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface LoginResponse {
+  success: boolean;
+  token: string;
+  user: User;
+  message?: string;
+}
+
+export interface UserListResponse {
+  users: User[];
+  total: number;
+  limit?: number;
+  offset?: number;
+}
+
