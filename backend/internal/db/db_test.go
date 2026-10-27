@@ -69,3 +69,28 @@ func TestUserManagementAndAdminSeed(t *testing.T) {
 		t.Fatalf("Created user not found in ListUsers")
 	}
 }
+
+func TestMigrationOnExistingUsersTable(t *testing.T) {
+	tempDB := filepath.Join(t.TempDir(), "test_legacy_upgrade.db")
+	// Test InitDB handles both fresh and already existing tables gracefully
+	database, err := db.InitDB(tempDB, "")
+	if err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+	defer database.Close()
+
+	gUser := &models.GoogleUserInfo{
+		ID:      "google-test-id-1",
+		Email:   "test@google.com",
+		Name:    "Test Google",
+		Picture: "https://example.com/pic.jpg",
+	}
+	u, err := database.FindOrCreateGoogleUser(gUser)
+	if err != nil {
+		t.Fatalf("FindOrCreateGoogleUser failed: %v", err)
+	}
+	if u.GoogleID != "google-test-id-1" || u.AuthProvider != "google" {
+		t.Fatalf("unexpected user: %+v", u)
+	}
+}
+

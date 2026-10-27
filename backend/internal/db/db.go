@@ -178,12 +178,17 @@ func (d *DB) migrate() error {
 			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 		);
 		CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT DEFAULT '';
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT '';
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT DEFAULT 'local';
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '';
+
 		CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
 		`
 		if _, err := d.conn.Exec(query); err != nil {
 			return err
 		}
-		d.ensureUserColumns()
 		return nil
 	}
 
@@ -218,7 +223,6 @@ func (d *DB) migrate() error {
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-	CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
 	`
 	if _, err := d.conn.Exec(query); err != nil {
 		return err
@@ -233,6 +237,7 @@ func (d *DB) ensureUserColumns() {
 			ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT DEFAULT '';
 			ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT '';
 			ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT DEFAULT 'local';
+			ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '';
 			CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
 		`)
 		return
@@ -247,6 +252,7 @@ func (d *DB) ensureUserColumns() {
 	hasGoogleID := false
 	hasAvatarURL := false
 	hasAuthProvider := false
+	hasPhone := false
 
 	for rows.Next() {
 		var cid int
@@ -261,6 +267,8 @@ func (d *DB) ensureUserColumns() {
 				hasAvatarURL = true
 			case "auth_provider":
 				hasAuthProvider = true
+			case "phone":
+				hasPhone = true
 			}
 		}
 	}
@@ -274,6 +282,11 @@ func (d *DB) ensureUserColumns() {
 	if !hasAuthProvider {
 		_, _ = d.conn.Exec("ALTER TABLE users ADD COLUMN auth_provider TEXT DEFAULT 'local'")
 	}
+	if !hasPhone {
+		_, _ = d.conn.Exec("ALTER TABLE users ADD COLUMN phone TEXT DEFAULT ''")
+	}
+
+	_, _ = d.conn.Exec("CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)")
 }
 
 func (d *DB) ExistsByHash(hash string) (bool, error) {
