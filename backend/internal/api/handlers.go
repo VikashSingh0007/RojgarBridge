@@ -716,6 +716,27 @@ func detectFrontendURL(r *http.Request, cfg *config.Config) string {
 	return "http://localhost:3000"
 }
 
+// detectBackendCallbackURL dynamically determines the callback URL (https://rojgarbridge.onrender.com/... on production)
+func detectBackendCallbackURL(r *http.Request, cfg *config.Config) string {
+	if cfg != nil && cfg.GoogleRedirectURL != "" && !strings.Contains(cfg.GoogleRedirectURL, "localhost") && !strings.Contains(cfg.GoogleRedirectURL, "127.0.0.1") {
+		return cfg.GoogleRedirectURL
+	}
+
+	host := r.Host
+	if host != "" && !strings.Contains(host, "localhost") && !strings.Contains(host, "127.0.0.1") {
+		proto := "https"
+		if fwd := r.Header.Get("X-Forwarded-Proto"); fwd != "" {
+			proto = fwd
+		}
+		return fmt.Sprintf("%s://%s/api/auth/google/callback", proto, host)
+	}
+
+	if cfg != nil && cfg.GoogleRedirectURL != "" {
+		return cfg.GoogleRedirectURL
+	}
+	return "http://localhost:8080/api/auth/google/callback"
+}
+
 // GoogleLogin redirects user to Google's OAuth 2.0 consent page
 func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 	frontendURL := detectFrontendURL(r, h.cfg)
@@ -726,10 +747,12 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	callbackURL := detectBackendCallbackURL(r, h.cfg)
+
 	googleAuthURL := fmt.Sprintf(
 		"https://accounts.google.com/o/oauth2/v2/auth?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&access_type=offline&prompt=select_account&state=%s",
 		url.QueryEscape(h.cfg.GoogleClientID),
-		url.QueryEscape(h.cfg.GoogleRedirectURL),
+		url.QueryEscape(callbackURL),
 		url.QueryEscape("openid email profile"),
 		url.QueryEscape(frontendURL),
 	)
@@ -760,12 +783,14 @@ func (h *Handler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	callbackURL := detectBackendCallbackURL(r, h.cfg)
+
 	// 1. Exchange code for access token
 	data := url.Values{}
 	data.Set("code", code)
 	data.Set("client_id", h.cfg.GoogleClientID)
 	data.Set("client_secret", h.cfg.GoogleClientSecret)
-	data.Set("redirect_uri", h.cfg.GoogleRedirectURL)
+	data.Set("redirect_uri", callbackURL)
 	data.Set("grant_type", "authorization_code")
 
 	tokenResp, err := http.PostForm("https://oauth2.googleapis.com/token", data)
