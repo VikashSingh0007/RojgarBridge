@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
+	"rojgarbridge-backend/internal/cache"
 	"rojgarbridge-backend/internal/config"
 	"rojgarbridge-backend/internal/db"
 	"rojgarbridge-backend/internal/models"
@@ -23,6 +24,7 @@ type Handler struct {
 	manager  *scrapers.Manager
 	notifier notifier.Notifier
 	cfg      *config.Config
+	cache    *cache.Cache
 }
 
 func NewHandler(database *db.DB, manager *scrapers.Manager, notif notifier.Notifier, cfg *config.Config) *Handler {
@@ -31,6 +33,7 @@ func NewHandler(database *db.DB, manager *scrapers.Manager, notif notifier.Notif
 		manager:  manager,
 		notifier: notif,
 		cfg:      cfg,
+		cache:    cache.NewCache(2 * time.Minute),
 	}
 }
 
@@ -159,8 +162,14 @@ func (h *Handler) GetDrafts(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetPublished - lists live jobs for public viewing with full DB filtering
+// GetPublished - lists live jobs for public viewing with full DB filtering (cached)
 func (h *Handler) GetPublished(w http.ResponseWriter, r *http.Request) {
+	cacheKey := "published:" + r.URL.RawQuery
+	if cached, ok := h.cache.Get(cacheKey); ok {
+		respondJSON(w, http.StatusOK, cached)
+		return
+	}
+
 	limit := parseLimit(r.URL.Query().Get("limit"), 10)
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	if offset < 0 {
@@ -188,17 +197,26 @@ func (h *Handler) GetPublished(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, http.StatusOK, map[string]interface{}{
+
+	resp := map[string]interface{}{
 		"total":  total,
 		"count":  len(jobs),
 		"limit":  limit,
 		"offset": offset,
 		"jobs":   jobs,
-	})
+	}
+	h.cache.Set(cacheKey, resp, 30*time.Second)
+	respondJSON(w, http.StatusOK, resp)
 }
 
-// SearchJobs - full text search with qualification, state, category, type and sort filters
+// SearchJobs - full text search with qualification, state, category, type and sort filters (cached)
 func (h *Handler) SearchJobs(w http.ResponseWriter, r *http.Request) {
+	cacheKey := "search:" + r.URL.RawQuery
+	if cached, ok := h.cache.Get(cacheKey); ok {
+		respondJSON(w, http.StatusOK, cached)
+		return
+	}
+
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
 	if status == "" {
@@ -231,17 +249,19 @@ func (h *Handler) SearchJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{
+	resp := map[string]interface{}{
 		"query":  q,
 		"total":  total,
 		"count":  len(jobs),
 		"limit":  limit,
 		"offset": offset,
 		"jobs":   jobs,
-	})
+	}
+	h.cache.Set(cacheKey, resp, 30*time.Second)
+	respondJSON(w, http.StatusOK, resp)
 }
 
-// GetClosingSoon - returns jobs expiring in the upcoming days
+// GetClosingSoon - returns jobs expiring in the upcoming days (cached)
 func (h *Handler) GetClosingSoon(w http.ResponseWriter, r *http.Request) {
 	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
 	if days <= 0 {
@@ -252,26 +272,41 @@ func (h *Handler) GetClosingSoon(w http.ResponseWriter, r *http.Request) {
 		limit = 50
 	}
 
+	cacheKey := fmt.Sprintf("closing_soon:%d:%d", days, limit)
+	if cached, ok := h.cache.Get(cacheKey); ok {
+		respondJSON(w, http.StatusOK, cached)
+		return
+	}
+
 	jobs, err := h.db.GetClosingSoonJobs(days, limit)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{
+	resp := map[string]interface{}{
 		"days_window": days,
 		"count":       len(jobs),
 		"jobs":        jobs,
-	})
+	}
+	h.cache.Set(cacheKey, resp, 60*time.Second)
+	respondJSON(w, http.StatusOK, resp)
 }
 
-// GetAnalytics - returns aggregated dashboard metrics
+// GetAnalytics - returns aggregated dashboard metrics (cached)
 func (h *Handler) GetAnalytics(w http.ResponseWriter, r *http.Request) {
+	const cacheKey = "analytics"
+	if cached, ok := h.cache.Get(cacheKey); ok {
+		respondJSON(w, http.StatusOK, cached)
+		return
+	}
+
 	analytics, err := h.db.GetAnalytics()
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	h.cache.Set(cacheKey, analytics, 60*time.Second)
 	respondJSON(w, http.StatusOK, analytics)
 }
 
@@ -327,6 +362,7 @@ func (h *Handler) UpdateJob(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to update job: "+err.Error())
 		return
 	}
+	h.cache.Clear()
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"message": "job updated successfully",
@@ -353,6 +389,7 @@ func (h *Handler) PublishJob(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to publish job: "+err.Error())
 		return
 	}
+	h.cache.Clear()
 
 	job.Status = models.StatusPublished
 
@@ -382,6 +419,7 @@ func (h *Handler) BulkPublish(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to bulk publish: "+err.Error())
 		return
 	}
+	h.cache.Clear()
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"message":         "Jobs published successfully",
@@ -410,6 +448,7 @@ func (h *Handler) RejectJob(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to reject job: "+err.Error())
 		return
 	}
+	h.cache.Clear()
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"message": "job rejected",

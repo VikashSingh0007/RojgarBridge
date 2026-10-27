@@ -94,3 +94,62 @@ func TestMigrationOnExistingUsersTable(t *testing.T) {
 	}
 }
 
+func TestNormalizedJobsSchemaAndQueries(t *testing.T) {
+	tempDB := filepath.Join(t.TempDir(), "test_jobs_norm.db")
+	database, err := db.InitDB(tempDB, "")
+	if err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+	defer database.Close()
+
+	// 1. Verify initial seeded jobs
+	jobs, total, err := database.QueryJobs(db.JobFilterParams{
+		Status: "published",
+	})
+	if err != nil {
+		t.Fatalf("QueryJobs failed: %v", err)
+	}
+	if total == 0 || len(jobs) == 0 {
+		t.Fatalf("Expected seeded published jobs, got 0")
+	}
+
+	// 2. Test normalized column search (e.g. query "SSC")
+	sscJobs, sscTotal, err := database.QueryJobs(db.JobFilterParams{
+		Status: "published",
+		Query:  "SSC",
+	})
+	if err != nil {
+		t.Fatalf("QueryJobs for SSC failed: %v", err)
+	}
+	if sscTotal == 0 || len(sscJobs) == 0 {
+		t.Fatalf("Expected at least 1 SSC job, got 0")
+	}
+
+	// 3. Test sorting by posts (total_vacancies DESC)
+	sortedJobs, _, err := database.QueryJobs(db.JobFilterParams{
+		Status: "published",
+		SortBy: "posts",
+	})
+	if err != nil {
+		t.Fatalf("QueryJobs sort by posts failed: %v", err)
+	}
+	if len(sortedJobs) > 1 {
+		if sortedJobs[0].Details.TotalVacancies < sortedJobs[1].Details.TotalVacancies {
+			t.Fatalf("Expected sortedJobs[0].Vacancies >= sortedJobs[1].Vacancies, got %d < %d",
+				sortedJobs[0].Details.TotalVacancies, sortedJobs[1].Details.TotalVacancies)
+		}
+	}
+
+	// 4. Test GetAnalytics
+	analytics, err := database.GetAnalytics()
+	if err != nil {
+		t.Fatalf("GetAnalytics failed: %v", err)
+	}
+	if analytics["total_jobs"].(int) == 0 {
+		t.Fatalf("Expected total_jobs > 0, got 0")
+	}
+	if analytics["total_vacancies"].(int) == 0 {
+		t.Fatalf("Expected total_vacancies > 0, got 0")
+	}
+}
+

@@ -51,9 +51,9 @@ func InitDB(dbPath, databaseURL string) (*DB, error) {
 			return nil, fmt.Errorf("failed to open postgres database: %w", err)
 		}
 
-		conn.SetMaxOpenConns(25)
-		conn.SetMaxIdleConns(10)
-		conn.SetConnMaxLifetime(5 * time.Minute)
+		conn.SetMaxOpenConns(50)
+		conn.SetMaxIdleConns(25)
+		conn.SetConnMaxLifetime(15 * time.Minute)
 
 		if err := conn.Ping(); err != nil {
 			return nil, fmt.Errorf("failed to ping postgres database: %w", err)
@@ -81,18 +81,21 @@ func InitDB(dbPath, databaseURL string) (*DB, error) {
 		return nil, fmt.Errorf("failed to open sqlite database: %w", err)
 	}
 
-	// Optimize SQLite performance & concurrency
+	// Optimize SQLite performance & concurrency (WAL, 64MB Cache, 256MB MMAP)
 	if _, err := conn.Exec(`
 		PRAGMA journal_mode = WAL;
 		PRAGMA synchronous = NORMAL;
 		PRAGMA foreign_keys = ON;
-		PRAGMA busy_timeout = 10000;
+		PRAGMA busy_timeout = 15000;
+		PRAGMA cache_size = -64000;
+		PRAGMA mmap_size = 268435456;
+		PRAGMA temp_store = MEMORY;
 	`); err != nil {
 		return nil, fmt.Errorf("failed to set pragma: %w", err)
 	}
 
-	conn.SetMaxOpenConns(25)
-	conn.SetMaxIdleConns(10)
+	conn.SetMaxOpenConns(50)
+	conn.SetMaxIdleConns(25)
 
 	db := &DB{conn: conn, driverName: "sqlite"}
 	if err := db.migrate(); err != nil {
@@ -153,6 +156,25 @@ func (d *DB) migrate() error {
 			hash TEXT UNIQUE NOT NULL,
 			source_portal TEXT NOT NULL,
 			status TEXT NOT NULL DEFAULT 'draft',
+			title TEXT NOT NULL DEFAULT '',
+			notice_type TEXT NOT NULL DEFAULT 'recruitment',
+			organization TEXT NOT NULL DEFAULT '',
+			category TEXT NOT NULL DEFAULT '',
+			state TEXT NOT NULL DEFAULT 'All India',
+			advt_number TEXT NOT NULL DEFAULT '',
+			total_vacancies INTEGER NOT NULL DEFAULT 0,
+			min_age INTEGER,
+			max_age INTEGER,
+			qualification TEXT NOT NULL DEFAULT '',
+			application_start TEXT NOT NULL DEFAULT '',
+			application_end TEXT NOT NULL DEFAULT '',
+			exam_date TEXT NOT NULL DEFAULT '',
+			fee_general TEXT NOT NULL DEFAULT '',
+			fee_reserved TEXT NOT NULL DEFAULT '',
+			salary_payscale TEXT NOT NULL DEFAULT '',
+			official_apply_url TEXT NOT NULL DEFAULT '',
+			official_notice_url TEXT NOT NULL DEFAULT '',
+			confidence_score REAL NOT NULL DEFAULT 1.0,
 			raw_notice JSONB NOT NULL,
 			details JSONB NOT NULL,
 			review_notes TEXT DEFAULT '',
@@ -160,6 +182,7 @@ func (d *DB) migrate() error {
 			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 			published_at TIMESTAMPTZ
 		);
+
 		CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 		CREATE INDEX IF NOT EXISTS idx_jobs_hash ON jobs(hash);
 		CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at DESC);
@@ -178,17 +201,12 @@ func (d *DB) migrate() error {
 			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 		);
 		CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-
-		ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT DEFAULT '';
-		ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT '';
-		ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT DEFAULT 'local';
-		ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '';
-
-		CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
 		`
 		if _, err := d.conn.Exec(query); err != nil {
 			return err
 		}
+		d.ensureJobColumns()
+		d.ensureUserColumns()
 		return nil
 	}
 
@@ -198,6 +216,25 @@ func (d *DB) migrate() error {
 		hash TEXT UNIQUE NOT NULL,
 		source_portal TEXT NOT NULL,
 		status TEXT NOT NULL DEFAULT 'draft',
+		title TEXT NOT NULL DEFAULT '',
+		notice_type TEXT NOT NULL DEFAULT 'recruitment',
+		organization TEXT NOT NULL DEFAULT '',
+		category TEXT NOT NULL DEFAULT '',
+		state TEXT NOT NULL DEFAULT 'All India',
+		advt_number TEXT NOT NULL DEFAULT '',
+		total_vacancies INTEGER NOT NULL DEFAULT 0,
+		min_age INTEGER,
+		max_age INTEGER,
+		qualification TEXT NOT NULL DEFAULT '',
+		application_start TEXT NOT NULL DEFAULT '',
+		application_end TEXT NOT NULL DEFAULT '',
+		exam_date TEXT NOT NULL DEFAULT '',
+		fee_general TEXT NOT NULL DEFAULT '',
+		fee_reserved TEXT NOT NULL DEFAULT '',
+		salary_payscale TEXT NOT NULL DEFAULT '',
+		official_apply_url TEXT NOT NULL DEFAULT '',
+		official_notice_url TEXT NOT NULL DEFAULT '',
+		confidence_score REAL NOT NULL DEFAULT 1.0,
 		raw_notice JSON NOT NULL,
 		details JSON NOT NULL,
 		review_notes TEXT DEFAULT '',
@@ -227,8 +264,143 @@ func (d *DB) migrate() error {
 	if _, err := d.conn.Exec(query); err != nil {
 		return err
 	}
+	d.ensureJobColumns()
 	d.ensureUserColumns()
 	return nil
+}
+
+func (d *DB) ensureJobColumns() {
+	if d.driverName == "postgres" {
+		_, _ = d.conn.Exec(`
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '';
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS notice_type TEXT NOT NULL DEFAULT 'recruitment';
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS organization TEXT NOT NULL DEFAULT '';
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT '';
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'All India';
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS advt_number TEXT NOT NULL DEFAULT '';
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS total_vacancies INTEGER NOT NULL DEFAULT 0;
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS min_age INTEGER;
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS max_age INTEGER;
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS qualification TEXT NOT NULL DEFAULT '';
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS application_start TEXT NOT NULL DEFAULT '';
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS application_end TEXT NOT NULL DEFAULT '';
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS exam_date TEXT NOT NULL DEFAULT '';
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS fee_general TEXT NOT NULL DEFAULT '';
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS fee_reserved TEXT NOT NULL DEFAULT '';
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS salary_payscale TEXT NOT NULL DEFAULT '';
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS official_apply_url TEXT NOT NULL DEFAULT '';
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS official_notice_url TEXT NOT NULL DEFAULT '';
+			ALTER TABLE jobs ADD COLUMN IF NOT EXISTS confidence_score REAL NOT NULL DEFAULT 1.0;
+
+			UPDATE jobs SET
+				title = COALESCE(NULLIF(title, ''), details->>'title', ''),
+				notice_type = COALESCE(NULLIF(notice_type, ''), NULLIF(details->>'notice_type', ''), 'recruitment'),
+				organization = COALESCE(NULLIF(organization, ''), details->>'organization', ''),
+				category = COALESCE(NULLIF(category, ''), details->>'category', ''),
+				state = COALESCE(NULLIF(state, ''), NULLIF(details->>'state', ''), 'All India'),
+				advt_number = COALESCE(NULLIF(advt_number, ''), details->>'advt_number', ''),
+				total_vacancies = CASE WHEN total_vacancies > 0 THEN total_vacancies ELSE COALESCE(safe_cast_int(details->>'total_vacancies'), 0) END,
+				qualification = COALESCE(NULLIF(qualification, ''), details->>'qualification', ''),
+				application_start = COALESCE(NULLIF(application_start, ''), details->>'application_start', ''),
+				application_end = COALESCE(NULLIF(application_end, ''), details->>'application_end', ''),
+				exam_date = COALESCE(NULLIF(exam_date, ''), details->>'exam_date', ''),
+				fee_general = COALESCE(NULLIF(fee_general, ''), details->>'fee_general', ''),
+				fee_reserved = COALESCE(NULLIF(fee_reserved, ''), details->>'fee_reserved', ''),
+				salary_payscale = COALESCE(NULLIF(salary_payscale, ''), details->>'salary_payscale', ''),
+				official_apply_url = COALESCE(NULLIF(official_apply_url, ''), details->>'official_apply_url', ''),
+				official_notice_url = COALESCE(NULLIF(official_notice_url, ''), details->>'official_notice_url', '')
+			WHERE title = '' OR title IS NULL;
+
+			CREATE INDEX IF NOT EXISTS idx_jobs_status_pub ON jobs(status, published_at DESC, created_at DESC);
+			CREATE INDEX IF NOT EXISTS idx_jobs_notice_type ON jobs(notice_type);
+			CREATE INDEX IF NOT EXISTS idx_jobs_category ON jobs(category);
+			CREATE INDEX IF NOT EXISTS idx_jobs_state ON jobs(state);
+			CREATE INDEX IF NOT EXISTS idx_jobs_org ON jobs(organization);
+			CREATE INDEX IF NOT EXISTS idx_jobs_vacancies ON jobs(total_vacancies DESC);
+			CREATE INDEX IF NOT EXISTS idx_jobs_app_end ON jobs(application_end);
+			CREATE INDEX IF NOT EXISTS idx_jobs_portal ON jobs(source_portal);
+		`)
+		return
+	}
+
+	rows, err := d.conn.Query("PRAGMA table_info(jobs)")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	existing := make(map[string]bool)
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dfltValue sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err == nil {
+			existing[name] = true
+		}
+	}
+
+	cols := []struct {
+		name string
+		def  string
+	}{
+		{"title", "TEXT NOT NULL DEFAULT ''"},
+		{"notice_type", "TEXT NOT NULL DEFAULT 'recruitment'"},
+		{"organization", "TEXT NOT NULL DEFAULT ''"},
+		{"category", "TEXT NOT NULL DEFAULT ''"},
+		{"state", "TEXT NOT NULL DEFAULT 'All India'"},
+		{"advt_number", "TEXT NOT NULL DEFAULT ''"},
+		{"total_vacancies", "INTEGER NOT NULL DEFAULT 0"},
+		{"min_age", "INTEGER"},
+		{"max_age", "INTEGER"},
+		{"qualification", "TEXT NOT NULL DEFAULT ''"},
+		{"application_start", "TEXT NOT NULL DEFAULT ''"},
+		{"application_end", "TEXT NOT NULL DEFAULT ''"},
+		{"exam_date", "TEXT NOT NULL DEFAULT ''"},
+		{"fee_general", "TEXT NOT NULL DEFAULT ''"},
+		{"fee_reserved", "TEXT NOT NULL DEFAULT ''"},
+		{"salary_payscale", "TEXT NOT NULL DEFAULT ''"},
+		{"official_apply_url", "TEXT NOT NULL DEFAULT ''"},
+		{"official_notice_url", "TEXT NOT NULL DEFAULT ''"},
+		{"confidence_score", "REAL NOT NULL DEFAULT 1.0"},
+	}
+
+	for _, col := range cols {
+		if !existing[col.name] {
+			_, _ = d.conn.Exec(fmt.Sprintf("ALTER TABLE jobs ADD COLUMN %s %s", col.name, col.def))
+		}
+	}
+
+	// Backfill and index SQLite
+	_, _ = d.conn.Exec(`
+		UPDATE jobs SET
+			title = COALESCE(NULLIF(title, ''), json_extract(details, '$.title'), ''),
+			notice_type = COALESCE(NULLIF(notice_type, ''), NULLIF(json_extract(details, '$.notice_type'), ''), 'recruitment'),
+			organization = COALESCE(NULLIF(organization, ''), json_extract(details, '$.organization'), ''),
+			category = COALESCE(NULLIF(category, ''), json_extract(details, '$.category'), ''),
+			state = COALESCE(NULLIF(state, ''), NULLIF(json_extract(details, '$.state'), ''), 'All India'),
+			advt_number = COALESCE(NULLIF(advt_number, ''), json_extract(details, '$.advt_number'), ''),
+			total_vacancies = CASE WHEN total_vacancies > 0 THEN total_vacancies ELSE COALESCE(CAST(json_extract(details, '$.total_vacancies') AS INTEGER), 0) END,
+			qualification = COALESCE(NULLIF(qualification, ''), json_extract(details, '$.qualification'), ''),
+			application_start = COALESCE(NULLIF(application_start, ''), json_extract(details, '$.application_start'), ''),
+			application_end = COALESCE(NULLIF(application_end, ''), json_extract(details, '$.application_end'), ''),
+			exam_date = COALESCE(NULLIF(exam_date, ''), json_extract(details, '$.exam_date'), ''),
+			fee_general = COALESCE(NULLIF(fee_general, ''), json_extract(details, '$.fee_general'), ''),
+			fee_reserved = COALESCE(NULLIF(fee_reserved, ''), json_extract(details, '$.fee_reserved'), ''),
+			salary_payscale = COALESCE(NULLIF(salary_payscale, ''), json_extract(details, '$.salary_payscale'), ''),
+			official_apply_url = COALESCE(NULLIF(official_apply_url, ''), json_extract(details, '$.official_apply_url'), ''),
+			official_notice_url = COALESCE(NULLIF(official_notice_url, ''), json_extract(details, '$.official_notice_url'), '')
+		WHERE title = '' OR title IS NULL;
+
+		CREATE INDEX IF NOT EXISTS idx_jobs_status_pub ON jobs(status, published_at DESC, created_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_jobs_notice_type ON jobs(notice_type);
+		CREATE INDEX IF NOT EXISTS idx_jobs_category ON jobs(category);
+		CREATE INDEX IF NOT EXISTS idx_jobs_state ON jobs(state);
+		CREATE INDEX IF NOT EXISTS idx_jobs_org ON jobs(organization);
+		CREATE INDEX IF NOT EXISTS idx_jobs_vacancies ON jobs(total_vacancies DESC);
+		CREATE INDEX IF NOT EXISTS idx_jobs_app_end ON jobs(application_end);
+		CREATE INDEX IF NOT EXISTS idx_jobs_portal ON jobs(source_portal);
+	`)
 }
 
 func (d *DB) ensureUserColumns() {
@@ -312,15 +484,48 @@ func (d *DB) SaveDraft(job *models.Job) error {
 		return fmt.Errorf("failed to marshal details: %w", err)
 	}
 
+	det := job.Details
+	nType := det.NoticeType
+	if nType == "" {
+		nType = "recruitment"
+	}
+	state := det.State
+	if state == "" {
+		state = "All India"
+	}
+	confScore := det.ConfidenceScore
+	if confScore <= 0 {
+		confScore = 1.0
+	}
+
 	now := time.Now()
 	if d.driverName == "postgres" {
 		query := `
-		INSERT INTO jobs (hash, source_portal, status, raw_notice, details, review_notes, created_at, updated_at)
-		VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8)
-		RETURNING id
+		INSERT INTO jobs (
+			hash, source_portal, status,
+			title, notice_type, organization, category, state, advt_number,
+			total_vacancies, min_age, max_age, qualification, application_start,
+			application_end, exam_date, fee_general, fee_reserved, salary_payscale,
+			official_apply_url, official_notice_url, confidence_score,
+			raw_notice, details, review_notes, created_at, updated_at
+		) VALUES (
+			$1, $2, $3,
+			$4, $5, $6, $7, $8, $9,
+			$10, $11, $12, $13, $14,
+			$15, $16, $17, $18, $19,
+			$20, $21, $22,
+			$23::jsonb, $24::jsonb, $25, $26, $27
+		) RETURNING id
 		`
 		var id int64
-		err := d.conn.QueryRow(query, job.Hash, job.SourcePortal, models.StatusDraft, string(rawJSON), string(detailsJSON), job.ReviewNotes, now, now).Scan(&id)
+		err := d.conn.QueryRow(query,
+			job.Hash, job.SourcePortal, models.StatusDraft,
+			det.Title, nType, det.Organization, det.Category, state, det.AdvtNumber,
+			det.TotalVacancies, det.MinAge, det.MaxAge, det.Qualification, det.ApplicationStart,
+			det.ApplicationEnd, det.ExamDate, det.FeeGeneral, det.FeeReserved, det.SalaryPayScale,
+			det.OfficialApplyURL, det.OfficialNoticeURL, confScore,
+			string(rawJSON), string(detailsJSON), job.ReviewNotes, now, now,
+		).Scan(&id)
 		if err != nil {
 			return fmt.Errorf("failed to insert draft: %w", err)
 		}
@@ -332,10 +537,23 @@ func (d *DB) SaveDraft(job *models.Job) error {
 	}
 
 	query := `
-	INSERT INTO jobs (hash, source_portal, status, raw_notice, details, review_notes, created_at, updated_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO jobs (
+		hash, source_portal, status,
+		title, notice_type, organization, category, state, advt_number,
+		total_vacancies, min_age, max_age, qualification, application_start,
+		application_end, exam_date, fee_general, fee_reserved, salary_payscale,
+		official_apply_url, official_notice_url, confidence_score,
+		raw_notice, details, review_notes, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	res, err := d.conn.Exec(query, job.Hash, job.SourcePortal, models.StatusDraft, string(rawJSON), string(detailsJSON), job.ReviewNotes, now, now)
+	res, err := d.conn.Exec(query,
+		job.Hash, job.SourcePortal, models.StatusDraft,
+		det.Title, nType, det.Organization, det.Category, state, det.AdvtNumber,
+		det.TotalVacancies, det.MinAge, det.MaxAge, det.Qualification, det.ApplicationStart,
+		det.ApplicationEnd, det.ExamDate, det.FeeGeneral, det.FeeReserved, det.SalaryPayScale,
+		det.OfficialApplyURL, det.OfficialNoticeURL, confScore,
+		string(rawJSON), string(detailsJSON), job.ReviewNotes, now, now,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to insert draft: %w", err)
 	}
@@ -372,15 +590,15 @@ func (d *DB) QueryJobs(params JobFilterParams) ([]models.Job, int, error) {
 		args = append(args, params.Status)
 	}
 
-	// 2. Search query across all relevant fields
+	// 2. Search query across indexed columns
 	if strings.TrimSpace(params.Query) != "" {
 		term := "%" + strings.TrimSpace(params.Query) + "%"
 		if d.driverName == "postgres" {
-			whereClauses = append(whereClauses, "(json_extract(details, '$.title') ILIKE ? OR json_extract(details, '$.organization') ILIKE ? OR json_extract(details, '$.advt_number') ILIKE ? OR json_extract(details, '$.qualification') ILIKE ? OR json_extract(details, '$.category') ILIKE ? OR json_extract(details, '$.state') ILIKE ? OR source_portal ILIKE ? OR raw_notice::text ILIKE ?)")
+			whereClauses = append(whereClauses, "(title ILIKE ? OR organization ILIKE ? OR advt_number ILIKE ? OR qualification ILIKE ? OR category ILIKE ? OR state ILIKE ? OR source_portal ILIKE ?)")
 		} else {
-			whereClauses = append(whereClauses, "(json_extract(details, '$.title') LIKE ? OR json_extract(details, '$.organization') LIKE ? OR json_extract(details, '$.advt_number') LIKE ? OR json_extract(details, '$.qualification') LIKE ? OR json_extract(details, '$.category') LIKE ? OR json_extract(details, '$.state') LIKE ? OR source_portal LIKE ? OR raw_notice LIKE ?)")
+			whereClauses = append(whereClauses, "(title LIKE ? OR organization LIKE ? OR advt_number LIKE ? OR qualification LIKE ? OR category LIKE ? OR state LIKE ? OR source_portal LIKE ?)")
 		}
-		args = append(args, term, term, term, term, term, term, term, term)
+		args = append(args, term, term, term, term, term, term, term)
 	}
 
 	// 3. Notice types filter
@@ -392,15 +610,15 @@ func (d *DB) QueryJobs(params JobFilterParams) ([]models.Job, int, error) {
 				continue
 			}
 			if strings.Contains(tClean, "recruitment") {
-				typeOrs = append(typeOrs, "(json_extract(details, '$.notice_type') = 'recruitment' OR json_extract(details, '$.notice_type') IS NULL OR json_extract(details, '$.notice_type') = '')")
+				typeOrs = append(typeOrs, "(notice_type = 'recruitment' OR notice_type IS NULL OR notice_type = '')")
 			} else if strings.Contains(tClean, "admit") {
-				typeOrs = append(typeOrs, "json_extract(details, '$.notice_type') = 'admit_card'")
+				typeOrs = append(typeOrs, "notice_type = 'admit_card'")
 			} else if strings.Contains(tClean, "result") {
-				typeOrs = append(typeOrs, "json_extract(details, '$.notice_type') = 'result'")
+				typeOrs = append(typeOrs, "notice_type = 'result'")
 			} else if strings.Contains(tClean, "answer") {
-				typeOrs = append(typeOrs, "json_extract(details, '$.notice_type') = 'answer_key'")
+				typeOrs = append(typeOrs, "notice_type = 'answer_key'")
 			} else {
-				typeOrs = append(typeOrs, "json_extract(details, '$.notice_type') = ?")
+				typeOrs = append(typeOrs, "notice_type = ?")
 				args = append(args, tClean)
 			}
 		}
@@ -419,25 +637,25 @@ func (d *DB) QueryJobs(params JobFilterParams) ([]models.Job, int, error) {
 			}
 			cLower := strings.ToLower(cat)
 			if cLower == "central govt" {
-				catOrs = append(catOrs, "(json_extract(details, '$.category') LIKE '%Central%' OR source_portal IN ('UPSC', 'SSC', 'RRB', 'IBPS', 'ISRO'))")
+				catOrs = append(catOrs, "(category LIKE '%Central%' OR source_portal IN ('UPSC', 'SSC', 'RRB', 'IBPS', 'ISRO'))")
 			} else if cLower == "state govt" {
-				catOrs = append(catOrs, "(json_extract(details, '$.category') LIKE '%State%' OR source_portal IN ('UPPSC', 'BPSC', 'MPPSC', 'RPSC'))")
+				catOrs = append(catOrs, "(category LIKE '%State%' OR source_portal IN ('UPPSC', 'BPSC', 'MPPSC', 'RPSC'))")
 			} else if cLower == "banking" || cLower == "bank" {
-				catOrs = append(catOrs, "(json_extract(details, '$.category') LIKE '%Bank%' OR json_extract(details, '$.organization') LIKE '%Bank%' OR source_portal = 'IBPS')")
+				catOrs = append(catOrs, "(category LIKE '%Bank%' OR organization LIKE '%Bank%' OR source_portal = 'IBPS')")
 			} else if strings.Contains(cLower, "defence") || strings.Contains(cLower, "police") {
-				catOrs = append(catOrs, "(json_extract(details, '$.category') LIKE '%Defence%' OR json_extract(details, '$.category') LIKE '%Police%' OR json_extract(details, '$.title') LIKE '%Police%' OR json_extract(details, '$.title') LIKE '%Defence%')")
+				catOrs = append(catOrs, "(category LIKE '%Defence%' OR category LIKE '%Police%' OR title LIKE '%Police%' OR title LIKE '%Defence%')")
 			} else if strings.Contains(cLower, "teach") {
-				catOrs = append(catOrs, "(json_extract(details, '$.category') LIKE '%Teach%' OR json_extract(details, '$.title') LIKE '%Teacher%' OR json_extract(details, '$.title') LIKE '%Lecturer%' OR json_extract(details, '$.title') LIKE '%Principal%')")
+				catOrs = append(catOrs, "(category LIKE '%Teach%' OR title LIKE '%Teacher%' OR title LIKE '%Lecturer%' OR title LIKE '%Principal%')")
 			} else if strings.Contains(cLower, "engineering") || strings.Contains(cLower, "psu") {
-				catOrs = append(catOrs, "(json_extract(details, '$.category') LIKE '%Engineering%' OR json_extract(details, '$.category') LIKE '%PSU%' OR json_extract(details, '$.title') LIKE '%Engineer%' OR source_portal = 'ISRO')")
+				catOrs = append(catOrs, "(category LIKE '%Engineering%' OR category LIKE '%PSU%' OR title LIKE '%Engineer%' OR source_portal = 'ISRO')")
 			} else if cLower == "railway" {
-				catOrs = append(catOrs, "(source_portal = 'RRB' OR json_extract(details, '$.organization') LIKE '%Railway%')")
+				catOrs = append(catOrs, "(source_portal = 'RRB' OR organization LIKE '%Railway%')")
 			} else if cLower == "ssc" {
-				catOrs = append(catOrs, "(source_portal = 'SSC' OR json_extract(details, '$.organization') LIKE '%Staff Selection%')")
+				catOrs = append(catOrs, "(source_portal = 'SSC' OR organization LIKE '%Staff Selection%')")
 			} else if cLower == "upsc" {
-				catOrs = append(catOrs, "(source_portal = 'UPSC' OR json_extract(details, '$.organization') LIKE '%UPSC%')")
+				catOrs = append(catOrs, "(source_portal = 'UPSC' OR organization LIKE '%UPSC%')")
 			} else {
-				catOrs = append(catOrs, "(json_extract(details, '$.category') LIKE ? OR json_extract(details, '$.organization') LIKE ? OR source_portal = ?)")
+				catOrs = append(catOrs, "(category LIKE ? OR organization LIKE ? OR source_portal = ?)")
 				args = append(args, "%"+cat+"%", "%"+cat+"%", cat)
 			}
 		}
@@ -456,23 +674,23 @@ func (d *DB) QueryJobs(params JobFilterParams) ([]models.Job, int, error) {
 			}
 			qLower := strings.ToLower(qClean)
 			if strings.Contains(qLower, "10th") {
-				qualOrs = append(qualOrs, "(json_extract(details, '$.qualification') LIKE '%10th%' OR json_extract(details, '$.qualification') LIKE '%Matric%')")
+				qualOrs = append(qualOrs, "(qualification LIKE '%10th%' OR qualification LIKE '%Matric%')")
 			} else if strings.Contains(qLower, "12th") {
-				qualOrs = append(qualOrs, "(json_extract(details, '$.qualification') LIKE '%12th%' OR json_extract(details, '$.qualification') LIKE '%Intermediate%' OR json_extract(details, '$.qualification') LIKE '%10+2%')")
+				qualOrs = append(qualOrs, "(qualification LIKE '%12th%' OR qualification LIKE '%Intermediate%' OR qualification LIKE '%10+2%')")
 			} else if strings.Contains(qLower, "iti") {
-				qualOrs = append(qualOrs, "json_extract(details, '$.qualification') LIKE '%ITI%'")
+				qualOrs = append(qualOrs, "qualification LIKE '%ITI%'")
 			} else if strings.Contains(qLower, "diploma") {
-				qualOrs = append(qualOrs, "json_extract(details, '$.qualification') LIKE '%Diploma%'")
+				qualOrs = append(qualOrs, "qualification LIKE '%Diploma%'")
 			} else if strings.Contains(qLower, "b.tech") || strings.Contains(qLower, "b.e") {
-				qualOrs = append(qualOrs, "(json_extract(details, '$.qualification') LIKE '%B.E%' OR json_extract(details, '$.qualification') LIKE '%B.Tech%' OR json_extract(details, '$.qualification') LIKE '%Engineer%')")
+				qualOrs = append(qualOrs, "(qualification LIKE '%B.E%' OR qualification LIKE '%B.Tech%' OR qualification LIKE '%Engineer%')")
 			} else if strings.Contains(qLower, "post graduate") || strings.Contains(qLower, "pg") {
-				qualOrs = append(qualOrs, "(json_extract(details, '$.qualification') LIKE '%Post Graduate%' OR json_extract(details, '$.qualification') LIKE '%PG%' OR json_extract(details, '$.qualification') LIKE '%Master%')")
+				qualOrs = append(qualOrs, "(qualification LIKE '%Post Graduate%' OR qualification LIKE '%PG%' OR qualification LIKE '%Master%')")
 			} else if strings.Contains(qLower, "graduate") {
-				qualOrs = append(qualOrs, "(json_extract(details, '$.qualification') LIKE '%Graduate%' OR json_extract(details, '$.qualification') LIKE '%Degree%')")
+				qualOrs = append(qualOrs, "(qualification LIKE '%Graduate%' OR qualification LIKE '%Degree%')")
 			} else if strings.Contains(qLower, "ca") || strings.Contains(qLower, "finance") {
-				qualOrs = append(qualOrs, "(json_extract(details, '$.qualification') LIKE '%CA%' OR json_extract(details, '$.qualification') LIKE '%Finance%')")
+				qualOrs = append(qualOrs, "(qualification LIKE '%CA%' OR qualification LIKE '%Finance%')")
 			} else {
-				qualOrs = append(qualOrs, "json_extract(details, '$.qualification') LIKE ?")
+				qualOrs = append(qualOrs, "qualification LIKE ?")
 				args = append(args, "%"+qClean+"%")
 			}
 		}
@@ -484,13 +702,13 @@ func (d *DB) QueryJobs(params JobFilterParams) ([]models.Job, int, error) {
 	// 6. States filters
 	if len(params.States) > 0 {
 		var stateOrs []string
-		stateOrs = append(stateOrs, "json_extract(details, '$.state') = 'All India'")
+		stateOrs = append(stateOrs, "state = 'All India'")
 		for _, st := range params.States {
 			st = strings.TrimSpace(st)
 			if st == "" || strings.EqualFold(st, "all") || strings.EqualFold(st, "all india") {
 				continue
 			}
-			stateOrs = append(stateOrs, "(json_extract(details, '$.state') = ? OR json_extract(details, '$.state') LIKE ?)")
+			stateOrs = append(stateOrs, "(state = ? OR state LIKE ?)")
 			args = append(args, st, "%"+st+"%")
 		}
 		whereClauses = append(whereClauses, "("+strings.Join(stateOrs, " OR ")+")")
@@ -501,7 +719,7 @@ func (d *DB) QueryJobs(params JobFilterParams) ([]models.Job, int, error) {
 		whereSQL = " WHERE " + strings.Join(whereClauses, " AND ")
 	}
 
-	// 1. Total matching count
+	// 1. Total matching count (uses index)
 	countQuery := d.rebind("SELECT COUNT(1) FROM jobs" + whereSQL)
 	var totalCount int
 	if err := d.conn.QueryRow(countQuery, args...).Scan(&totalCount); err != nil {
@@ -512,13 +730,9 @@ func (d *DB) QueryJobs(params JobFilterParams) ([]models.Job, int, error) {
 	orderSQL := " ORDER BY COALESCE(published_at, created_at) DESC, id DESC"
 	switch strings.ToLower(params.SortBy) {
 	case "posts":
-		if d.driverName == "postgres" {
-			orderSQL = " ORDER BY safe_cast_int(json_extract(details, '$.total_vacancies')) DESC, id DESC"
-		} else {
-			orderSQL = " ORDER BY CAST(json_extract(details, '$.total_vacancies') AS INTEGER) DESC, id DESC"
-		}
+		orderSQL = " ORDER BY total_vacancies DESC, id DESC"
 	case "deadline":
-		orderSQL = " ORDER BY CASE WHEN json_extract(details, '$.application_end') IS NULL OR json_extract(details, '$.application_end') = '' OR json_extract(details, '$.application_end') LIKE '%Refer%' THEN 1 ELSE 0 END, json_extract(details, '$.application_end') ASC, id DESC"
+		orderSQL = " ORDER BY CASE WHEN application_end IS NULL OR application_end = '' OR application_end LIKE '%Refer%' THEN 1 ELSE 0 END, application_end ASC, id DESC"
 	case "latest":
 		orderSQL = " ORDER BY COALESCE(published_at, created_at) DESC, id DESC"
 	}
@@ -649,14 +863,14 @@ func (d *DB) GetClosingSoonJobs(days int, limit int) ([]models.Job, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	// Query jobs with valid date string in application_end
+	// Query jobs with valid date string in application_end directly using indexed columns
 	query := `
 	SELECT id, hash, source_portal, status, raw_notice, details, review_notes, created_at, updated_at, published_at
 	FROM jobs
-	WHERE json_extract(details, '$.application_end') != 'Refer notification'
-	  AND json_extract(details, '$.application_end') != ''
-	  AND json_extract(details, '$.notice_type') = 'recruitment'
-	ORDER BY created_at DESC
+	WHERE application_end != 'Refer notification'
+	  AND application_end != ''
+	  AND notice_type = 'recruitment'
+	ORDER BY application_end ASC, created_at DESC
 	LIMIT ?
 	`
 	rows, err := d.conn.Query(d.rebind(query), limit)
@@ -693,16 +907,12 @@ func (d *DB) GetAnalytics() (map[string]interface{}, error) {
 	analytics["total_jobs"] = totalJobs
 
 	var totalVacancies int
-	if d.driverName == "postgres" {
-		_ = d.conn.QueryRow("SELECT COALESCE(SUM(safe_cast_int(json_extract(details, '$.total_vacancies'))), 0) FROM jobs").Scan(&totalVacancies)
-	} else {
-		_ = d.conn.QueryRow("SELECT COALESCE(SUM(CAST(json_extract(details, '$.total_vacancies') AS INTEGER)), 0) FROM jobs").Scan(&totalVacancies)
-	}
+	_ = d.conn.QueryRow("SELECT COALESCE(SUM(total_vacancies), 0) FROM jobs").Scan(&totalVacancies)
 	analytics["total_vacancies"] = totalVacancies
 
 	// Breakdown by notice type
 	typeCounts := make(map[string]int)
-	if rows, err := d.conn.Query("SELECT json_extract(details, '$.notice_type'), COUNT(1) FROM jobs GROUP BY json_extract(details, '$.notice_type')"); err == nil {
+	if rows, err := d.conn.Query("SELECT notice_type, COUNT(1) FROM jobs GROUP BY notice_type"); err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var nType string
@@ -716,7 +926,7 @@ func (d *DB) GetAnalytics() (map[string]interface{}, error) {
 
 	// Breakdown by category
 	categoryCounts := make(map[string]int)
-	if rows, err := d.conn.Query("SELECT json_extract(details, '$.category'), COUNT(1) FROM jobs GROUP BY json_extract(details, '$.category') ORDER BY COUNT(1) DESC"); err == nil {
+	if rows, err := d.conn.Query("SELECT category, COUNT(1) FROM jobs GROUP BY category ORDER BY COUNT(1) DESC"); err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var cat string
@@ -730,7 +940,7 @@ func (d *DB) GetAnalytics() (map[string]interface{}, error) {
 
 	// Top states
 	stateCounts := make(map[string]int)
-	if rows, err := d.conn.Query("SELECT json_extract(details, '$.state'), COUNT(1) FROM jobs GROUP BY json_extract(details, '$.state') ORDER BY COUNT(1) DESC LIMIT 10"); err == nil {
+	if rows, err := d.conn.Query("SELECT state, COUNT(1) FROM jobs GROUP BY state ORDER BY COUNT(1) DESC LIMIT 10"); err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var st string
@@ -830,23 +1040,57 @@ func (d *DB) UpdateJob(job *models.Job) error {
 		return err
 	}
 
-	now := time.Now()
-	var query string
-	if d.driverName == "postgres" {
-		query = `
-		UPDATE jobs
-		SET details = $1::jsonb, review_notes = $2, updated_at = $3
-		WHERE id = $4
-		`
-		_, err = d.conn.Exec(query, string(detailsJSON), job.ReviewNotes, now, job.ID)
-	} else {
-		query = `
-		UPDATE jobs
-		SET details = ?, review_notes = ?, updated_at = ?
-		WHERE id = ?
-		`
-		_, err = d.conn.Exec(query, string(detailsJSON), job.ReviewNotes, now, job.ID)
+	det := job.Details
+	nType := det.NoticeType
+	if nType == "" {
+		nType = "recruitment"
 	}
+	state := det.State
+	if state == "" {
+		state = "All India"
+	}
+	confScore := det.ConfidenceScore
+	if confScore <= 0 {
+		confScore = 1.0
+	}
+
+	now := time.Now()
+	if d.driverName == "postgres" {
+		query := `
+		UPDATE jobs
+		SET title = $1, notice_type = $2, organization = $3, category = $4, state = $5, advt_number = $6,
+		    total_vacancies = $7, min_age = $8, max_age = $9, qualification = $10, application_start = $11,
+		    application_end = $12, exam_date = $13, fee_general = $14, fee_reserved = $15, salary_payscale = $16,
+		    official_apply_url = $17, official_notice_url = $18, confidence_score = $19,
+		    details = $20::jsonb, review_notes = $21, updated_at = $22
+		WHERE id = $23
+		`
+		_, err = d.conn.Exec(query,
+			det.Title, nType, det.Organization, det.Category, state, det.AdvtNumber,
+			det.TotalVacancies, det.MinAge, det.MaxAge, det.Qualification, det.ApplicationStart,
+			det.ApplicationEnd, det.ExamDate, det.FeeGeneral, det.FeeReserved, det.SalaryPayScale,
+			det.OfficialApplyURL, det.OfficialNoticeURL, confScore,
+			string(detailsJSON), job.ReviewNotes, now, job.ID,
+		)
+		return err
+	}
+
+	query := `
+	UPDATE jobs
+	SET title = ?, notice_type = ?, organization = ?, category = ?, state = ?, advt_number = ?,
+	    total_vacancies = ?, min_age = ?, max_age = ?, qualification = ?, application_start = ?,
+	    application_end = ?, exam_date = ?, fee_general = ?, fee_reserved = ?, salary_payscale = ?,
+	    official_apply_url = ?, official_notice_url = ?, confidence_score = ?,
+	    details = ?, review_notes = ?, updated_at = ?
+	WHERE id = ?
+	`
+	_, err = d.conn.Exec(query,
+		det.Title, nType, det.Organization, det.Category, state, det.AdvtNumber,
+		det.TotalVacancies, det.MinAge, det.MaxAge, det.Qualification, det.ApplicationStart,
+		det.ApplicationEnd, det.ExamDate, det.FeeGeneral, det.FeeReserved, det.SalaryPayScale,
+		det.OfficialApplyURL, det.OfficialNoticeURL, confScore,
+		string(detailsJSON), job.ReviewNotes, now, job.ID,
+	)
 	return err
 }
 

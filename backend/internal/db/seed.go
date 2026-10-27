@@ -316,22 +316,68 @@ func (d *DB) SeedInitialVerifiedJobs() error {
 		if err != nil {
 			continue
 		}
+		det := job.Details
+		nType := det.NoticeType
+		if nType == "" {
+			nType = "recruitment"
+		}
+		state := det.State
+		if state == "" {
+			state = "All India"
+		}
+		confScore := det.ConfidenceScore
+		if confScore <= 0 {
+			confScore = 1.0
+		}
 		now := time.Now()
 		if d.driverName == "postgres" {
 			query := `
-			INSERT INTO jobs (hash, source_portal, status, raw_notice, details, review_notes, created_at, updated_at, published_at)
-			VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9)
+			INSERT INTO jobs (
+				hash, source_portal, status,
+				title, notice_type, organization, category, state, advt_number,
+				total_vacancies, min_age, max_age, qualification, application_start,
+				application_end, exam_date, fee_general, fee_reserved, salary_payscale,
+				official_apply_url, official_notice_url, confidence_score,
+				raw_notice, details, review_notes, created_at, updated_at, published_at
+			) VALUES (
+				$1, $2, $3,
+				$4, $5, $6, $7, $8, $9,
+				$10, $11, $12, $13, $14,
+				$15, $16, $17, $18, $19,
+				$20, $21, $22,
+				$23::jsonb, $24::jsonb, $25, $26, $27, $28
+			)
 			ON CONFLICT (hash) DO NOTHING
 			`
-			if _, err := d.conn.Exec(query, job.Hash, job.SourcePortal, models.StatusPublished, string(rawJSON), string(detJSON), job.ReviewNotes, now, now, now); err != nil {
+			if _, err := d.conn.Exec(query,
+				job.Hash, job.SourcePortal, models.StatusPublished,
+				det.Title, nType, det.Organization, det.Category, state, det.AdvtNumber,
+				det.TotalVacancies, det.MinAge, det.MaxAge, det.Qualification, det.ApplicationStart,
+				det.ApplicationEnd, det.ExamDate, det.FeeGeneral, det.FeeReserved, det.SalaryPayScale,
+				det.OfficialApplyURL, det.OfficialNoticeURL, confScore,
+				string(rawJSON), string(detJSON), job.ReviewNotes, now, now, now,
+			); err != nil {
 				return fmt.Errorf("failed inserting seed job: %w", err)
 			}
 		} else {
 			query := `
-			INSERT OR IGNORE INTO jobs (hash, source_portal, status, raw_notice, details, review_notes, created_at, updated_at, published_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			INSERT OR IGNORE INTO jobs (
+				hash, source_portal, status,
+				title, notice_type, organization, category, state, advt_number,
+				total_vacancies, min_age, max_age, qualification, application_start,
+				application_end, exam_date, fee_general, fee_reserved, salary_payscale,
+				official_apply_url, official_notice_url, confidence_score,
+				raw_notice, details, review_notes, created_at, updated_at, published_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`
-			if _, err := d.conn.Exec(query, job.Hash, job.SourcePortal, models.StatusPublished, string(rawJSON), string(detJSON), job.ReviewNotes, now, now, now); err != nil {
+			if _, err := d.conn.Exec(query,
+				job.Hash, job.SourcePortal, models.StatusPublished,
+				det.Title, nType, det.Organization, det.Category, state, det.AdvtNumber,
+				det.TotalVacancies, det.MinAge, det.MaxAge, det.Qualification, det.ApplicationStart,
+				det.ApplicationEnd, det.ExamDate, det.FeeGeneral, det.FeeReserved, det.SalaryPayScale,
+				det.OfficialApplyURL, det.OfficialNoticeURL, confScore,
+				string(rawJSON), string(detJSON), job.ReviewNotes, now, now, now,
+			); err != nil {
 				return fmt.Errorf("failed inserting seed job: %w", err)
 			}
 		}
