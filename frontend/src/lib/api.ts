@@ -20,12 +20,17 @@ export function getApiBaseUrl(): string {
     return clean;
   }
 
-  // If running in browser on a deployed production domain (e.g. Render)
+  // If running in browser on a deployed production domain (e.g. Render/Vercel)
   if (
     typeof window !== "undefined" &&
     window.location.hostname !== "localhost" &&
     window.location.hostname !== "127.0.0.1"
   ) {
+    return "https://rojgarbridge.onrender.com";
+  }
+
+  // If running in production mode (SSR on Vercel/Render)
+  if (process.env.NODE_ENV === "production") {
     return "https://rojgarbridge.onrender.com";
   }
 
@@ -299,7 +304,10 @@ export async function createUser(payload: {
 
 // 12. Google OAuth URL
 export function getGoogleLoginUrl(): string {
-  return `${getApiBaseUrl()}/api/auth/google/login`;
+  const baseUrl = getApiBaseUrl();
+  const frontendOrigin = typeof window !== "undefined" && window.location.origin ? window.location.origin : "";
+  const param = frontendOrigin ? `?redirect=${encodeURIComponent(frontendOrigin)}` : "";
+  return `${baseUrl}/api/auth/google/login${param}`;
 }
 
 // 13. Verify Google Token or Simulate Google Sign-In

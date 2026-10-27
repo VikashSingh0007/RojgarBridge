@@ -687,15 +687,41 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GoogleLogin redirects user to Google's OAuth 2.0 consent page
-func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
-	frontendURL := "http://localhost:3000"
-	if h.cfg != nil && h.cfg.FrontendURL != "" {
-		frontendURL = h.cfg.FrontendURL
+// detectFrontendURL dynamically figures out the calling frontend domain (Vercel, custom domain, or localhost)
+func detectFrontendURL(r *http.Request, cfg *config.Config) string {
+	if redirectParam := r.URL.Query().Get("redirect"); redirectParam != "" {
+		if strings.HasPrefix(redirectParam, "http://") || strings.HasPrefix(redirectParam, "https://") {
+			return strings.TrimRight(redirectParam, "/")
+		}
 	}
 
+	if referer := r.Header.Get("Referer"); referer != "" {
+		u, err := url.Parse(referer)
+		if err == nil && u.Scheme != "" && u.Host != "" {
+			return fmt.Sprintf("%s://%s", u.Scheme, u.Host)
+		}
+	}
+
+	if origin := r.Header.Get("Origin"); origin != "" {
+		return strings.TrimRight(origin, "/")
+	}
+
+	if cfg != nil && cfg.FrontendURL != "" && !strings.Contains(cfg.FrontendURL, "localhost") {
+		return strings.TrimRight(cfg.FrontendURL, "/")
+	}
+
+	if cfg != nil && cfg.FrontendURL != "" {
+		return strings.TrimRight(cfg.FrontendURL, "/")
+	}
+	return "http://localhost:3000"
+}
+
+// GoogleLogin redirects user to Google's OAuth 2.0 consent page
+func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
+	frontendURL := detectFrontendURL(r, h.cfg)
+
 	if h.cfg == nil || strings.TrimSpace(h.cfg.GoogleClientID) == "" {
-		// If Google credentials are not set in .env, redirect with helpful prompt
+		// If Google credentials are not set in .env, redirect back to calling frontend
 		http.Redirect(w, r, frontendURL+"/auth/callback?error=google_client_id_not_configured", http.StatusTemporaryRedirect)
 		return
 	}
@@ -705,7 +731,7 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 		url.QueryEscape(h.cfg.GoogleClientID),
 		url.QueryEscape(h.cfg.GoogleRedirectURL),
 		url.QueryEscape("openid email profile"),
-		"state_rozgarhub",
+		url.QueryEscape(frontendURL),
 	)
 
 	http.Redirect(w, r, googleAuthURL, http.StatusTemporaryRedirect)
@@ -713,9 +739,13 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 
 // GoogleCallback handles the redirect callback from Google with authorization code
 func (h *Handler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
-	frontendURL := "http://localhost:3000"
-	if h.cfg != nil && h.cfg.FrontendURL != "" {
-		frontendURL = h.cfg.FrontendURL
+	frontendURL := detectFrontendURL(r, h.cfg)
+	if state := r.URL.Query().Get("state"); state != "" {
+		if unescaped, err := url.QueryUnescape(state); err == nil && (strings.HasPrefix(unescaped, "http://") || strings.HasPrefix(unescaped, "https://")) {
+			frontendURL = strings.TrimRight(unescaped, "/")
+		} else if strings.HasPrefix(state, "http://") || strings.HasPrefix(state, "https://") {
+			frontendURL = strings.TrimRight(state, "/")
+		}
 	}
 
 	errParam := r.URL.Query().Get("error")

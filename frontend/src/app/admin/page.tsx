@@ -390,6 +390,10 @@ export default function AdminReviewPage() {
           {/* Google OAuth Button */}
           <a
             href={getGoogleLoginUrl()}
+            onClick={(e) => {
+              e.preventDefault();
+              window.location.href = getGoogleLoginUrl();
+            }}
             className="w-full py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-slate-300 font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center justify-center gap-2.5 cursor-pointer"
           >
             <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
