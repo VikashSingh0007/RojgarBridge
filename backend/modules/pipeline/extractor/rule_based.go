@@ -62,8 +62,25 @@ func (e *RuleBasedExtractor) Extract(notice job.RawNotice) (*job.ExtractedJobDet
 		advtNo = ExtractAdvtNumber(fullText)
 	}
 
-	// 12. Official Government Portal URL
+	// 12. Official Government Portal URL & Notice PDF
 	officialURL := ExtractOfficialGovURL(notice.ContentText+" "+notice.NoticeTitle, notice.NoticeURL)
+	noticePDFURL := officialURL
+	applyOnlineURL := officialURL
+
+	if strings.Contains(strings.ToLower(notice.NoticeURL), ".pdf") {
+		noticePDFURL = notice.NoticeURL
+		if noticeType == "recruitment" {
+			if strings.Contains(strings.ToLower(notice.SourcePortal), "upsc") || strings.Contains(strings.ToLower(notice.NoticeURL), "upsc.gov.in") {
+				applyOnlineURL = "https://upsconline.nic.in"
+			} else if strings.Contains(strings.ToLower(notice.SourcePortal), "ssc") || strings.Contains(strings.ToLower(notice.NoticeURL), "ssc.gov.in") {
+				applyOnlineURL = "https://ssc.gov.in"
+			} else if strings.Contains(strings.ToLower(notice.SourcePortal), "ibps") || strings.Contains(strings.ToLower(notice.NoticeURL), "ibps.in") {
+				applyOnlineURL = "https://ibps.in"
+			} else if strings.Contains(strings.ToLower(notice.SourcePortal), "bpsc") || strings.Contains(strings.ToLower(notice.NoticeURL), "bpsc.bih.nic.in") {
+				applyOnlineURL = "https://onlinebpsc.bihar.gov.in"
+			}
+		}
+	}
 
 	// 13. Rich Summary Points
 	summaryPoints := GenerateSummaryPoints(orgName, cleanTitle, noticeType, vacancies, qualification, appEnd, state, officialURL)
@@ -88,8 +105,8 @@ func (e *RuleBasedExtractor) Extract(notice job.RawNotice) (*job.ExtractedJobDet
 		FeeGeneral:        feeGen,
 		FeeReserved:       feeRes,
 		SalaryPayScale:    salary,
-		OfficialApplyURL:  officialURL,
-		OfficialNoticeURL: officialURL,
+		OfficialApplyURL:  applyOnlineURL,
+		OfficialNoticeURL: noticePDFURL,
 		SummaryPoints:     summaryPoints,
 		ConfidenceScore:   confidence,
 	}, nil
@@ -139,7 +156,7 @@ func ExtractNoticeType(text string) string {
 	}
 
 	// 4. Interview Schedule / Exam Schedule / Date announcement check
-	scheduleRegex := regexp.MustCompile(`(?i)\b(schedule\s+of|examination\s+schedule|exam\s+schedule|interview\s+schedule|schedule\s+for|tentative\s+schedule|revised\s+dates?|dates?\s+of\s+exam|time\s*table|schedule\s+of\s+pet|schedule\s+of\s+cbe)\b`)
+	scheduleRegex := regexp.MustCompile(`(?i)\b(schedule\s+of|examination\s+schedule|exam\s+schedule|interview\s+schedule|interview\s+details|interview\s+dates?|schedule\s+for|tentative\s+schedule|revised\s+dates?|dates?\s+of\s+exam|time\s*table|schedule\s+of\s+pet|schedule\s+of\s+cbe)\b`)
 	if scheduleRegex.MatchString(lower) {
 		return "interview_schedule"
 	}
