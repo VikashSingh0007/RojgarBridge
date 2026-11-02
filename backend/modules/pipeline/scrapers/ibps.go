@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PuerkitoBio/goquery"
 	"rojgarbridge-backend/modules/job"
 	"rojgarbridge-backend/utils"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
 type IBPSScraper struct {
@@ -339,4 +340,3 @@ func (s *IBPSScraper) fetchProcessDetailList(processURL string, notices *[]job.R
 		})
 	})
 }
-
