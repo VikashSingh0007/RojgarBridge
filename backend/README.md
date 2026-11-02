@@ -18,9 +18,9 @@ RojgarBridge is a high-performance backend built in **Golang** to automatically 
      - **UPPSC** (`uppsc.up.nic.in`) - Uttar Pradesh Public Service Commission
      - **ISRO** (`isro.gov.in`) - Indian Space Research Organisation
    - Generates SHA-256 deduplication hash (`portal_id + title + url`) so duplicate notices are never processed twice.
-2. **AI Extractor (`internal/extractor/`)**:
-   - Uses **Google Gemini 1.5 Flash** with strict JSON schemas to extract structured data: Title, Vacancies, Age Limit, Qualification, Fees, Dates, and Official PDF links.
-   - Built-in heuristic rule-based fallback when offline or if API key is not configured.
+2. **Deterministic Extractor (`modules/pipeline/extractor/`)**:
+   - Uses a 100% offline, deterministic **Rule-Based Extractor** with regex patterns, dictionary lookups, and boundary validation to extract structured data: Title, Notice Type, Organization, Category, State, Advt Number, Vacancies, Age Limits, Qualification, Fees, Dates, Salary, and Official PDF links.
+   - Zero external AI or LLM API dependencies.
    - Strict domain whitelist validation (only `.gov.in`, `.nic.in`, `.ac.in`, `.edu.in`, `ibps.in` allowed).
 3. **Database & Draft Storage (`internal/db/`)**:
    - Embedded **SQLite with WAL mode**, thread-safe write locks (`sync.Mutex`), and connection busy timeouts.
@@ -74,7 +74,6 @@ go build -o server .
 ```bash
 export PORT=8080
 export DB_PATH=rojgarbridge.db
-export GEMINI_API_KEY="your-gemini-api-key"
 export TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
 export TELEGRAM_CHAT_ID="@your_channel_or_chat_id"
 ```

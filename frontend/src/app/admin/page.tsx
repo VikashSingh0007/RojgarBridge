@@ -14,7 +14,6 @@ import {
   createUser,
   getGoogleLoginUrl,
 } from "@/lib/api";
-import { INITIAL_DRAFTS } from "@/lib/mockData";
 
 export default function AdminReviewPage() {
   // Authentication State
@@ -45,21 +44,15 @@ export default function AdminReviewPage() {
   const [createUserError, setCreateUserError] = useState<string | null>(null);
 
   // Drafts & Review State
-  const [drafts, setDrafts] = useState<JobItem[]>(INITIAL_DRAFTS);
-  const [selectedDraft, setSelectedDraft] = useState<JobItem | null>(
-    INITIAL_DRAFTS[0] || null
-  );
+  const [drafts, setDrafts] = useState<JobItem[]>([]);
+  const [selectedDraft, setSelectedDraft] = useState<JobItem | null>(null);
   const [activeTypeTab, setActiveTypeTab] = useState<string>("all");
   const [loading, setLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Edit form state
-  const [editFormData, setEditFormData] = useState<JobDetails | null>(
-    INITIAL_DRAFTS[0]?.details || null
-  );
-  const [reviewNotes, setReviewNotes] = useState<string>(
-    INITIAL_DRAFTS[0]?.review_notes || ""
-  );
+  const [editFormData, setEditFormData] = useState<JobDetails | null>(null);
+  const [reviewNotes, setReviewNotes] = useState<string>("");
 
   // Check stored auth session on mount
   useEffect(() => {
@@ -184,7 +177,11 @@ export default function AdminReviewPage() {
         }
       }
     } catch (err) {
-      console.warn("Using mock drafts (backend offline):", err);
+      console.warn("Failed to load drafts from backend:", err);
+      setDrafts([]);
+      setSelectedDraft(null);
+      setEditFormData(null);
+      setReviewNotes("");
     } finally {
       setLoading(false);
     }
