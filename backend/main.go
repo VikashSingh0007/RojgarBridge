@@ -10,12 +10,14 @@ import (
 	"syscall"
 	"time"
 
-	"rojgarbridge-backend/internal/api"
-	"rojgarbridge-backend/internal/config"
-	"rojgarbridge-backend/internal/db"
-	"rojgarbridge-backend/internal/extractor"
-	"rojgarbridge-backend/internal/notifier"
-	"rojgarbridge-backend/internal/scrapers"
+	"rojgarbridge-backend/config"
+	"rojgarbridge-backend/database"
+	"rojgarbridge-backend/modules/auth"
+	"rojgarbridge-backend/modules/job"
+	"rojgarbridge-backend/modules/pipeline"
+	"rojgarbridge-backend/modules/pipeline/extractor"
+	"rojgarbridge-backend/modules/user"
+	"rojgarbridge-backend/utils"
 )
 
 func main() {
@@ -25,52 +27,71 @@ func main() {
 	log.Println("==================================================")
 
 	// 1. Initialize Database (Neon Postgres or fallback SQLite)
-	database, err := db.InitDB(cfg.DBPath, cfg.DatabaseURL)
+	dbConn, err := database.InitDB(cfg.DBPath, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("Fatal: Database initialization failed: %v", err)
 	}
-	defer database.Close()
+	defer dbConn.Close()
 	if cfg.DatabaseURL != "" {
 		log.Println("[DB] Connected to Neon PostgreSQL database.")
 	} else {
 		log.Printf("[DB] Connected to SQLite database: %s", cfg.DBPath)
 	}
 
-	// 2. Initialize Extractor
-	if cfg.GeminiAPIKey != "" {
-		log.Println("[AI] Gemini AI Extractor enabled with API key.")
-	} else {
-		log.Println("[AI] GEMINI_API_KEY not set. Using smart rule-based fallback extractor.")
-	}
-	aiExtractor := extractor.NewGeminiExtractor(cfg.GeminiAPIKey)
-
-	// 3. Initialize Scrapers Manager
-	manager := scrapers.NewManager(database, aiExtractor)
-
-	// 4. Background scheduler (runs pipeline every 6 hours or on start)
-	go func() {
-		log.Println("[Scheduler] Running initial scraping pass...")
-		res := manager.RunPipeline()
-		log.Printf("[Scheduler] Initial pass completed: Scanned: %d, New Drafts: %d, Skipped: %d, Errors: %d",
-			res.TotalScanned, res.NewDrafts, res.Skipped, res.Errors)
-
-		ticker := time.NewTicker(6 * time.Hour)
-		defer ticker.Stop()
-		for range ticker.C {
-			log.Println("[Scheduler] Running periodic scraper pass...")
-			manager.RunPipeline()
-		}
-	}()
-
-	// 5. Initialize Telegram Alert Notifier
-	tgNotifier := notifier.NewTelegramNotifier(cfg.TelegramBotToken, cfg.TelegramChatID)
+	// 2. Initialize Shared Utilities (Cache & Telegram Notifier)
+	appCache := utils.NewCache(2 * time.Minute)
+	tgNotifier := utils.NewTelegramNotifier(cfg.TelegramBotToken, cfg.TelegramChatID)
 	if tgNotifier.IsEnabled() {
 		log.Println("[Notifier] Telegram Channel Alert Broadcast enabled.")
 	}
 
-	// 6. Initialize API Router
-	handler := api.NewHandler(database, manager, tgNotifier, cfg)
-	router := api.NewRouter(handler)
+	// 3. Initialize Deterministic Rule-Based Extractor
+	log.Println("[Extractor] Deterministic Rule-Based Job Notice Extractor enabled.")
+	ruleExtractor := extractor.NewRuleBasedExtractor()
+
+	// 4. Initialize Domain Services (with Dependency Injection)
+	userService := user.NewService(dbConn)
+	if err := userService.EnsureDefaultAdmin(); err != nil {
+		log.Printf("[Warning] Failed ensuring default admin: %v", err)
+	}
+
+	jobService := job.NewService(dbConn, tgNotifier)
+	if err := jobService.EnsurePublishedJobs(); err != nil {
+		log.Printf("[Warning] Failed ensuring published jobs: %v", err)
+	}
+
+	authService := auth.NewService(userService, cfg)
+	pipelineService := pipeline.NewService(jobService, ruleExtractor)
+
+	// 5. Centralized Cron & Background Processors Startup
+	procCtx, procCancel := context.WithCancel(context.Background())
+	defer procCancel()
+
+	userProcessor := user.NewProcessor(userService)
+	authProcessor := auth.NewProcessor(authService)
+	jobProcessor := job.NewProcessor(jobService)
+	pipelineProcessor := pipeline.NewProcessor(pipelineService, 6*time.Hour)
+
+	_ = userProcessor.Start(procCtx)
+	_ = authProcessor.Start(procCtx)
+	_ = jobProcessor.Start(procCtx)
+	if err := pipelineProcessor.Start(procCtx); err != nil {
+		log.Printf("[Warning] Failed starting pipeline processor: %v", err)
+	}
+
+	// 6. Initialize Module Handlers
+	userHandler := user.NewHandler(userService)
+	authHandler := auth.NewHandler(authService, cfg)
+	jobHandler := job.NewHandler(jobService, appCache)
+	pipelineHandler := pipeline.NewHandler(pipelineService)
+
+	// 7. Centralized Routing
+	router := NewRouter(ModuleRouters{
+		AuthHandler:     authHandler,
+		UserHandler:     userHandler,
+		JobHandler:      jobHandler,
+		PipelineHandler: pipelineHandler,
+	})
 
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
@@ -94,10 +115,16 @@ func main() {
 	<-quit
 
 	log.Println("[Server] Shutting down gracefully...")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	procCancel()
+	_ = pipelineProcessor.Stop()
+	_ = jobProcessor.Stop()
+	_ = authProcessor.Stop()
+	_ = userProcessor.Stop()
 
-	if err := server.Shutdown(ctx); err != nil {
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Printf("Server forced shutdown: %v", err)
 	}
 	log.Println("[Server] RojgarBridge backend exited clean.")

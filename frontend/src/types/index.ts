@@ -2,7 +2,8 @@ export type NoticeType =
   | "recruitment"
   | "result"
   | "admit_card"
-  | "interview_schedule";
+  | "interview_schedule"
+  | "answer_key";
 
 export interface RawNotice {
   source_portal: string;
@@ -35,6 +36,8 @@ export interface JobDetails {
   official_notice_url?: string;
   summary_points?: string[];
   confidence_score?: number;
+  related_recruitment?: string;
+  announcement_status?: string;
 }
 
 export interface JobItem {

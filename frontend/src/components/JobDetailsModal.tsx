@@ -9,15 +9,23 @@ import {
   CheckCircle2,
   Clipboard,
   ExternalLink,
+  FileText,
   GraduationCap,
   MapPin,
   MessageCircle,
+  ShieldCheck,
   Users,
   WalletCards,
   X,
 } from "lucide-react";
 import { JobItem } from "@/types";
-import { getDeadlineStatus, getPortalBadgeStyle } from "@/lib/formatters";
+import {
+  getDeadlineStatus,
+  getOfficialApplicationUrl,
+  getOfficialNotificationUrl,
+  getPortalBadgeStyle,
+  isOfficialGovUrl,
+} from "@/lib/formatters";
 
 interface JobDetailsModalProps {
   job: JobItem | null;
@@ -74,7 +82,7 @@ export default function JobDetailsModal({
     if (!job?.details.summary_points) return [];
     return job.details.summary_points
       .filter((point) => !/https?:\/\//i.test(point))
-      .slice(0, 4);
+      .slice(0, 5);
   }, [job]);
 
   if (!job) return null;
@@ -82,12 +90,10 @@ export default function JobDetailsModal({
   const d = job.details;
   const deadline = getDeadlineStatus(d.application_end);
   const portalStyle = getPortalBadgeStyle(job.source_portal || d.organization);
-  const noticeUrl = d.official_notice_url;
-  const primaryUrl = d.official_apply_url || noticeUrl;
-  const hasSeparateNotice = Boolean(
-    noticeUrl && d.official_apply_url && noticeUrl !== d.official_apply_url
-  );
-  const deadlineLabel = deadline.type === "unknown" ? "Not specified" : deadline.label;
+  const applyUrl = getOfficialApplicationUrl(job);
+  const noticeUrl = getOfficialNotificationUrl(job);
+  const isGovApply = isOfficialGovUrl(applyUrl || undefined);
+  const deadlineLabel = deadline.type === "unknown" ? "Refer notification" : deadline.label;
 
   const handleCopyLink = () => {
     const url = typeof window !== "undefined" ? window.location.href : "";
@@ -98,8 +104,8 @@ export default function JobDetailsModal({
 
   const handleShareWhatsApp = () => {
     const text = `📢 *${d.title}*\n🏢 *Org:* ${d.organization}\n👤 *Vacancies:* ${
-      d.total_vacancies > 0 ? d.total_vacancies : "Not specified"
-    }\n⏰ *Last Date:* ${d.application_end || "Not specified"}\n🔗 *Apply:* ${primaryUrl || ""}\n\nShared via RojgarBridge`;
+      d.total_vacancies > 0 ? d.total_vacancies.toLocaleString() : "Refer notice"
+    }\n⏰ *Last Date:* ${d.application_end || "Refer notice"}\n🔗 *Apply:* ${applyUrl || ""}\n📄 *Notification:* ${noticeUrl || ""}\n\nShared via RojgarBridge`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
   };
 
@@ -127,7 +133,7 @@ export default function JobDetailsModal({
 
               <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                 <span className="mr-1 inline-flex items-center gap-1.5 font-medium sm:text-sm">
-                  <MapPin className="h-4 w-4" />
+                  <MapPin className="h-4 w-4 text-slate-400" />
                   {d.state || "All India"}
                 </span>
                 {d.category ? (
@@ -136,10 +142,15 @@ export default function JobDetailsModal({
                   </span>
                 ) : null}
                 {d.notice_type ? (
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold capitalize text-slate-600">
+                  <span className="rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-semibold capitalize text-teal-800 border border-teal-100">
                     {d.notice_type.replaceAll("_", " ")}
                   </span>
                 ) : null}
+                {d.advt_number && (
+                  <span className="rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-500 border border-slate-200">
+                    Advt: {d.advt_number}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -154,7 +165,7 @@ export default function JobDetailsModal({
                   onClick={() => onToggleBookmark(job.id)}
                   className={`flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
                     isBookmarked
-                      ? "bg-amber-50 text-amber-600"
+                      ? "bg-amber-50 text-amber-600 border border-amber-200"
                       : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                   }`}
                   title={isBookmarked ? "Remove saved job" : "Save job"}
@@ -175,6 +186,7 @@ export default function JobDetailsModal({
         </header>
 
         <div className="flex-1 overflow-y-auto px-5 sm:px-6">
+          {/* Top Quick Status Metric Bar */}
           <section className="grid grid-cols-2 gap-x-4 gap-y-3 border-b border-slate-200 py-4 sm:grid-cols-4">
             <div>
               <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
@@ -192,7 +204,7 @@ export default function JobDetailsModal({
                 Vacancies
               </p>
               <p className="flex min-h-8 items-center text-sm font-extrabold text-slate-900">
-                {d.total_vacancies > 0 ? d.total_vacancies.toLocaleString() : "Not specified"}
+                {d.total_vacancies > 0 ? `${d.total_vacancies.toLocaleString()} Posts` : "Refer PDF"}
               </p>
             </div>
             <div className="sm:border-l sm:border-slate-200 sm:pl-4">
@@ -200,7 +212,13 @@ export default function JobDetailsModal({
                 Age limit
               </p>
               <p className="flex min-h-8 items-center text-sm font-extrabold text-slate-900">
-                {d.min_age && d.max_age ? `${d.min_age}–${d.max_age} years` : "Not specified"}
+                {d.min_age && d.max_age
+                  ? `${d.min_age}–${d.max_age} years`
+                  : d.min_age
+                  ? `Min ${d.min_age} years`
+                  : d.max_age
+                  ? `Max ${d.max_age} years`
+                  : "As per rules"}
               </p>
             </div>
             <div className="sm:border-l sm:border-slate-200 sm:pl-4">
@@ -208,18 +226,19 @@ export default function JobDetailsModal({
                 Exam date
               </p>
               <p className="flex min-h-8 items-center text-sm font-extrabold text-slate-900">
-                {d.exam_date || "Not announced"}
+                {d.exam_date || "To be announced"}
               </p>
             </div>
           </section>
 
+          {/* Detailed Specifications */}
           <div className="divide-y divide-slate-100">
-            <DetailSection icon={<GraduationCap className="h-4 w-4" />} title="Required qualification">
-              {d.qualification || "Not specified in the notice"}
+            <DetailSection icon={<GraduationCap className="h-4 w-4" />} title="Eligibility criteria">
+              {d.qualification || "Refer to the official recruitment notification"}
             </DetailSection>
 
-            <DetailSection icon={<Banknote className="h-4 w-4" />} title="Pay scale and salary">
-              {d.salary_payscale || "Not specified in the notice"}
+            <DetailSection icon={<Banknote className="h-4 w-4" />} title="Pay scale & salary">
+              {d.salary_payscale || "As per 7th CPC / State Government norms"}
             </DetailSection>
 
             <DetailSection icon={<WalletCards className="h-4 w-4" />} title="Application fee">
@@ -227,20 +246,20 @@ export default function JobDetailsModal({
                 <div>
                   <dt className="text-[11px] font-medium text-slate-500">General / OBC / EWS</dt>
                   <dd className="mt-0.5 text-sm font-bold text-slate-900">
-                    {d.fee_general || "Not specified"}
+                    {d.fee_general || "Refer notification"}
                   </dd>
                 </div>
                 <div>
                   <dt className="text-[11px] font-medium text-slate-500">SC / ST / PwD / Female</dt>
                   <dd className="mt-0.5 text-sm font-bold text-slate-900">
-                    {d.fee_reserved || "Not specified"}
+                    {d.fee_reserved || "Exempted / As per rules"}
                   </dd>
                 </div>
               </dl>
             </DetailSection>
 
             {conciseSummary.length > 0 ? (
-              <DetailSection icon={<Users className="h-4 w-4" />} title="Key information">
+              <DetailSection icon={<Users className="h-4 w-4" />} title="Notice summary">
                 <ul className="space-y-2 font-medium text-slate-600">
                   {conciseSummary.map((point, index) => (
                     <li key={`${point}-${index}`} className="flex gap-2.5">
@@ -251,53 +270,82 @@ export default function JobDetailsModal({
                 </ul>
               </DetailSection>
             ) : null}
-          </div>
 
+            {/* Official Verification Notice Callout */}
+            <div className="py-4 my-2 rounded-xl bg-slate-50 border border-slate-200 p-4 text-xs text-slate-600 space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                <ShieldCheck className="h-4 w-4 text-teal-700" />
+                <span>Official Government Recruitment Guarantee</span>
+              </div>
+              <p>
+                RojgarBridge extracts and verifies openings directly from official government portals.
+                Candidates are strongly advised to read the official notification PDF before submitting applications.
+              </p>
+            </div>
+          </div>
         </div>
 
-        <footer className="flex flex-none flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-5 py-3 sm:px-6">
+        {/* Action Bar Footer */}
+        <footer className="flex flex-none flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-3.5 sm:px-6">
           <div className="flex items-center gap-1 text-xs">
             <button
               onClick={handleShareWhatsApp}
               className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
             >
-              <MessageCircle className="h-4 w-4" />
-              Share
+              <MessageCircle className="h-4 w-4 text-emerald-600" />
+              <span>Share</span>
             </button>
             <button
               onClick={handleCopyLink}
               className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
             >
-              {copied ? <Check className="h-4 w-4" /> : <Clipboard className="h-4 w-4" />}
-              {copied ? "Link copied" : "Copy link"}
+              {copied ? <Check className="h-4 w-4 text-teal-700" /> : <Clipboard className="h-4 w-4" />}
+              <span>{copied ? "Copied" : "Copy"}</span>
             </button>
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
-            {hasSeparateNotice ? (
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {/* View Official Notification PDF (Independent Action) */}
+            {noticeUrl ? (
               <a
                 href={noticeUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-2xs transition-colors hover:bg-slate-100 hover:text-slate-950 sm:text-sm"
+                title="Open official recruitment notification document (PDF)"
               >
-                View official notice
-                <ExternalLink className="h-3.5 w-3.5" />
+                <FileText className="h-4 w-4 text-slate-500" />
+                <span>View Notification</span>
+                <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
               </a>
-            ) : null}
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-400">
+                <FileText className="h-4 w-4 opacity-50" />
+                Notification Pending
+              </span>
+            )}
 
-            {primaryUrl ? (
+            {/* Apply Online (Redirects to official portal in new tab) */}
+            {applyUrl ? (
               <a
-                href={primaryUrl}
+                href={applyUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-xs font-extrabold text-white shadow-sm transition-colors hover:bg-slate-800 sm:text-sm"
+                className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-xs font-extrabold text-white shadow-2xs transition-all hover:bg-slate-800 sm:text-sm"
+                title={isGovApply ? "Apply directly on official government website" : "Apply online"}
               >
-                {d.official_apply_url ? "Apply on official website" : "Open official notification"}
+                <span>Apply Online</span>
+                {isGovApply && (
+                  <span className="rounded bg-teal-800/80 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-teal-200">
+                    Official
+                  </span>
+                )}
                 <ExternalLink className="h-4 w-4" />
               </a>
             ) : (
-              <span className="text-xs font-semibold text-slate-500">Official link unavailable</span>
+              <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-400">
+                Apply link in notice
+              </span>
             )}
           </div>
         </footer>
