@@ -144,25 +144,25 @@ func ExtractNoticeType(text string) string {
 	}
 
 	// 2. Admit Card / City Intimation / Hall Ticket check
-	admitCardRegex := regexp.MustCompile(`(?i)\b(admit\s*cards?|hall\s*tickets?|call\s*letters?|e-admit|admission\s*certificates?|city\s*intimation|city\s*of\s*examination)\b`)
+	admitCardRegex := regexp.MustCompile(`(?i)\b(admit\s*cards?|hall\s*tickets?|call\s*letters?|e-admit|admission\s*certificates?|city\s*intimation|city\s*of\s*examination|(?:exam\s*)?(?:district|city)\s*slips?)\b`)
 	if admitCardRegex.MatchString(lower) {
 		return "admit_card"
 	}
 
 	// 3. Result / Merit List / Cut-off / Shortlisting check
-	resultRegex := regexp.MustCompile(`(?i)\b(declaration\s*of\s*results?|final\s*results?|results?|marks\s*of|merit\s*lists?|score\s*cards?|cut-?offs?|shortlist(?:ed|ing)?|selection\s*lists?|candidature\s*cancelled|status\s*of\s*(?:shortlisted\s*)?candidates|shortlisting\s*of\s*candidates)\b`)
+	resultRegex := regexp.MustCompile(`(?i)\b(declaration\s*of\s*results?|final\s*results?|results?|marks\s*of|merit\s*lists?|score\s*cards?|scores?\s+of|cut-?offs?|shortlist(?:ed|ing)?|selection\s*lists?|candidature\s*cancelled|status\s*of\s*(?:shortlisted\s*)?candidates|shortlisting\s*of\s*candidates|allocation\s+of\s+zones|screened-in|screening)\b`)
 	if resultRegex.MatchString(lower) {
 		return "result"
 	}
 
 	// 4. Interview Schedule / Exam Schedule / Date announcement check
-	scheduleRegex := regexp.MustCompile(`(?i)\b(schedule\s+of|examination\s+schedule|exam\s+schedule|interview\s+schedule|interview\s+details|interview\s+dates?|schedule\s+for|tentative\s+schedule|revised\s+dates?|dates?\s+of\s+exam|time\s*table|schedule\s+of\s+pet|schedule\s+of\s+cbe)\b`)
+	scheduleRegex := regexp.MustCompile(`(?i)\b(schedule\s+of|examination\s+schedule|exam\s+schedule|interview\s+schedule|interview\s+details|interview\s+dates?|schedule\s+for|tentative\s+schedule|revised\s+dates?|dates?\s+of\s+exam|commencement\s+of\s+exam|time\s*table|schedule\s+of\s+pet|schedule\s+of\s+cbe|conduct\s+of\s+.*(?:test|exam)|skill\s*test|typing\s*test|shorthand|physical\s+endurance\s+test|pet\s+and\s+mt|pe\s*&\s*mt)\b`)
 	if scheduleRegex.MatchString(lower) {
 		return "interview_schedule"
 	}
 
 	// 5. Corrigendum / Cancellation / Advisory
-	corrigendumRegex := regexp.MustCompile(`(?i)\b(corrigendum|addendum|extension\s*of\s*dates?|cancellation|advisory|debarred)\b`)
+	corrigendumRegex := regexp.MustCompile(`(?i)\b(corrigendum|addendum|extension\s*of\s*dates?|cancellation|postponement|advisory|debarred|facility\s+to|one\s+time\s+registration|\botr\b|profile\s+tab|refund|chargeback|scribe\s+declaration)\b`)
 	if corrigendumRegex.MatchString(lower) {
 		return "corrigendum"
 	}

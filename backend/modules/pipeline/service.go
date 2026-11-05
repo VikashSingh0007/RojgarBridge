@@ -118,9 +118,8 @@ func (s *service) RunPipeline() PipelineResult {
 					log.Printf("[Draft Created] ID: %d | [%s] %s (Vacancies: %d, Last Date: %s)",
 						j.ID, j.Details.Category, j.Details.Title, j.Details.TotalVacancies, j.Details.ApplicationEnd)
 
-					// Auto-publish verified active notices (both recruitments and official announcements)
-					shouldPublish := (j.Details.NoticeType == "recruitment" && (j.Details.TotalVacancies > 0 || (j.Details.ApplicationEnd != "" && j.Details.ApplicationEnd != "Refer notification"))) ||
-						(j.Details.NoticeType != "recruitment" && j.Details.OfficialNoticeURL != "")
+					// Auto-publish verified active notices with legitimate official document/portal URLs
+					shouldPublish := j.Details.OfficialNoticeURL != "" && len(j.Details.Title) >= 6
 
 					if shouldPublish {
 						if _, pubErr := s.jobService.PublishJob(j.ID); pubErr == nil {
@@ -207,9 +206,8 @@ func (s *service) RunScraper(name string) PipelineResult {
 			log.Printf("[Draft Created] ID: %d | [%s] %s (Vacancies: %d, Last Date: %s)",
 				j.ID, j.Details.Category, j.Details.Title, j.Details.TotalVacancies, j.Details.ApplicationEnd)
 
-			// Auto-publish verified active notices (both recruitments and official announcements)
-			shouldPublish := (j.Details.NoticeType == "recruitment" && (j.Details.TotalVacancies > 0 || (j.Details.ApplicationEnd != "" && j.Details.ApplicationEnd != "Refer notification"))) ||
-				(j.Details.NoticeType != "recruitment" && j.Details.OfficialNoticeURL != "")
+			// Auto-publish verified active notices with legitimate official document/portal URLs
+			shouldPublish := j.Details.OfficialNoticeURL != "" && len(j.Details.Title) >= 6
 
 			if shouldPublish {
 				if _, pubErr := s.jobService.PublishJob(j.ID); pubErr == nil {

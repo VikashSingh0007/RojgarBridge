@@ -45,9 +45,9 @@ func main() {
 		log.Println("[Notifier] Telegram Channel Alert Broadcast enabled.")
 	}
 
-	// 3. Initialize Deterministic Rule-Based Extractor
-	log.Println("[Extractor] Deterministic Rule-Based Job Notice Extractor enabled.")
-	ruleExtractor := extractor.NewRuleBasedExtractor()
+	// 3. Initialize Extractor (Ollama Local LLM + PDF Reader with deterministic Rule-Based Fallback)
+	log.Println("[Extractor] Initializing Ollama local LLM + PDF extractor with Rule-Based Fallback...")
+	ruleExtractor := extractor.NewOllamaExtractor("", "llama3.2:3b")
 
 	// 4. Initialize Domain Services (with Dependency Injection)
 	userService := user.NewService(dbConn)

@@ -14,6 +14,7 @@ import (
 
 func main() {
 	portalFlag := flag.String("portal", "", "Specify a single portal scraper to run (e.g. 'ssc')")
+	cleanFlag := flag.Bool("clean", false, "Clean existing stale jobs before fresh scrape")
 	flag.Parse()
 
 	cfg := config.Load()
@@ -23,7 +24,15 @@ func main() {
 	}
 	defer dbConn.Close()
 
-	ext := extractor.NewRuleBasedExtractor()
+	if *cleanFlag {
+		fmt.Println("Clearing stale jobs from database for fresh extraction...")
+		if _, err := dbConn.Exec("DELETE FROM jobs"); err != nil {
+			log.Fatalf("Failed to clear jobs: %v", err)
+		}
+		fmt.Println("Jobs table cleared cleanly.")
+	}
+
+	ext := extractor.NewOllamaExtractor("", "llama3.2:3b")
 	jobSvc := job.NewService(dbConn, nil)
 	pipeSvc := pipeline.NewService(jobSvc, ext)
 
